@@ -29,7 +29,11 @@ flowchart LR
     Prometheus --> Grafana
     Loki --> Grafana
 
-
+    %% --- IS tracking ---
+    ISWeb --> DBUWeb
+    ISWeb --> IMWeb
+    ISWeb --> shop_backend["shop_backend"]
+    
     %% --- Vault access ---
     Vault --> ISWeb
     Vault --> DBUWeb
@@ -331,3 +335,14 @@ When the Analysis app is enabled, `/analysis/` serves a page with chart data for
 
 DBUpdater is deployed as a separate Compose project but typically runs on the same VPS as InventoryManager. It uses its own `dbu-net` network while InventoryManager stays on `im-net`. To allow communication, expose the DBUpdater web container (usually named `dbu-web`) and set `DBU_BASE_URL` to that address. Configure the `DBU_*` variables in `.env` (or fetch them from Vault) and start each stack with `docker compose up -d`. This keeps the projects isolated while letting the `DBUClient` authenticate and retrieve product details.
 
+# Ecosystem Docs
+
+## Purpose
+When updating the documentation for the whole ecosystem it became apparent that having multiple duplicate files in different repos is redundant and tedious. When changed at one place it has to be manually changed in the others. This poses a huge manual workload. The answer: <span style="color:red">*A centralized SSOT for docs*</span>.
+
+This has been accomplished through setting up workflows that monitor changes and push or pull changes. The centralized repo notices changes and sends out dispatch to all registered repos. These not only can push to main in the SSOT with a PAT, but also retrieve changes.
+
+Benefits include:
+- Centralization reduces redundancy
+- Also ensures easy scalability, readability and monitoring
+- Reduces workload and ensures up-to-date files
