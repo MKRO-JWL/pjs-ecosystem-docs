@@ -87,20 +87,24 @@ flowchart LR
 InfrastructureStack is a Docker&nbsp;Compose stack that packages logging, monitoring and secret management for every PJS Collectables project. Running this stack on a single VPS gives all other repositories a ready‑made infrastructure layer so individual projects can stay focused on their own containers.
 
 ```mermaid
-graph TD
+graph TB
     subgraph InfrastructureStack
-        shop_backend
-        isweb[is-web] --> |metrics| prometheus
-        nginx --> |VPN| grafana
-        nginx --> |HTTPS| shop_backend
+        nginx --> |VPN| vpn_junction(( ))
+        vpn_junction --> is-web
+        vpn_junction --> grafana
+        nginx --> |HTTPS| Webshop
         vector --> loki --> grafana
         prometheus --> grafana
         vault
+        net[Docker Network]
     end
-    other[Other project] -->|metrics| prometheus
-    other -->|logs| vector
-    other <-->|secrets| vault
+    other[Other projects]
+    net --> |metrics| prometheus
+    net -->|logs| vector
+    net <-->|secrets| vault
+    net <-.-> |Dedicated Network|other
     Internet((Internet)) -->|requests| nginx
+    admins -.- vpn_junction
 ```
 
 ## Purpose
@@ -180,7 +184,6 @@ All infrastructure containers join each project network as well as `is-net`. Gra
 
 This project forms the backbone for the wider PJS Collectables ecosystem. By providing monitoring, logging and secret management out of the box it allows other repositories to remain focused on domain logic while relying on a consistent, secure infrastructure layer.
 
-</div>
 ---
 
 # DBUpdater Context
@@ -190,25 +193,19 @@ This document explains how the **DBUpdater** project fits into the PJS Collectab
 
 ```mermaid
 graph TD
-    subgraph InfrastructureStack
-        nginx
-        prometheus
-        vault
-        loki
-    end
     subgraph DBUpdater
-        web(Django web)
-        worker(Celery worker)
-        cron(Cleanup cron)
+        net[Docker Network]
+        dbu-web --> |metrics, logs, secrets| net
+        celery[Celery Workers] --> |logs| net
+        cron[Cron Workers] --> |logs| net
+        dbu-web <==> |Broker| db
         db[(PostgreSQL)]
     end
-    nginx --> web
-    prometheus -->|scrapes| web
-    vault --> web
-    vault --> worker
-    worker --> web
-    cron --> web
-    web -->|REST API| other[Other Projects]
+    im[InventoryManager]
+    is[InfrastructureStack]
+    net -.- |logs,metrics,secrets| is
+    net -.- |data| im
+    VPN -.-> dbu-web
 ```
 
 ## Purpose
@@ -268,35 +265,23 @@ InventoryManager is a Django-based service that manages orders and stock items w
 
 ```mermaid
 flowchart TD
-    subgraph Web
-        A[Django REST API]
-        B[Celery Worker]
-    end
-    subgraph Data
+    subgraph InventoryManager
+        api[API]
+        im-web --> |ORM| DB
+        celery[Celery Worker] --logs--> net
+        net[Docker Network]
         DB[(PostgreSQL)]
-        MQ[(RabbitMQ)]
     end
-    subgraph External
-        E[DBU API]
-    end
-    A --HTTP--> E
-    A --ORM--> DB
-    B --ORM--> DB
-    A --Queue--> MQ
-    B --Consume--> MQ
-    subgraph InfrastructureStack
-        N[Nginx]
-        P[Prometheus]
-        V[Vault]
-        Vec[Vector]
-        L[Loki]
-    end
-    N --Proxy--> A
-    P --Scrape--> A
-    V --Secrets--> A
-    V --Secrets--> B
-    A --Logs--> Vec
-    Vec --Store--> L
+    IMApp -.->|access| api
+    api -->|data| im-web
+    VPN -.-> im-web
+    dbu[DBUpdater]
+    is[InfrastructureStack]
+    mail[Mailbot]
+    im-web -->|metrics,logs,secrets| net
+    net <-.-> |metrics,logs,secrets| is
+    net <-.-> |data| dbu
+    mail -.->|data| net
 ```
 
 ## Purpose
