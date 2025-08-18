@@ -23,6 +23,7 @@ jobs:
           MKRO-JWL/InfrastructureStack
           MKRO-JWL/DBUpdater
           MKRO-JWL/InventoryManager
+          MKRO-JWL/MailBot
           REPOLIST
           echo "EOF" >> $GITHUB_OUTPUT
 
