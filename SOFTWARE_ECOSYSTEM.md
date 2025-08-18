@@ -299,14 +299,71 @@ Other applications communicate with InventoryManager primarily via its REST endp
 
 ## Core services
 ### 1. Inventory API
-Endpoints are defined under `Inventory/urls.py`:
-- `receive/` – POST order and line item data
-- `add-stock/` and `reduce-stock/` – update quantities
-- `delete-item/` – soft delete an item
-- `inventory/` – list current items with totals
-- `query-dbu-item/` and `confirm-item/` – search the DBU API and create entries
-- `signal/` – trigger a sync task
-- `metrics/` – Prometheus scrape endpoint
+
+The API is available under the `/api/` prefix. Obtain a token by POSTing a
+username and password to `/api/token/`:
+
+```bash
+curl -X POST -d "username=<user>&password=<pass>" \
+     http://localhost:8000/api/token/
+```
+
+The response returns a JSON object containing the `token`. Pass this token in
+an `Authorization: Token <token>` header when calling the endpoints described
+below.
+
+| Method | Path | Description | Permissions |
+| ------ | ---- | ----------- | ----------- |
+| POST | `/api/receive/` | Create an order and its items from posted data. | Authenticated |
+| POST | `/api/signal/` | Queue background sync for items missing details. | Authenticated |
+| GET | `/api/inventory/` | List visible inventory items and the summed total value. | Admin |
+| POST | `/api/add-stock/` | Increase quantity of an item by a given `amount` (optional `order_id`). | Admin |
+| POST | `/api/reduce-stock/` | Decrease quantity of an item by a given `amount` (optional `order_id`). | Admin |
+| DELETE | `/api/delete-item/` | Soft-delete an item using its `item_no` (optional `order_id`). | Admin |
+| POST | `/api/query-dbu-item/` | Search DBUpdater for products by title. | Admin |
+| POST | `/api/confirm-item/` | Import product details from DBUpdater using `product_no`. | Admin |
+
+#### Usage examples
+
+```bash
+# List current inventory
+curl -H "Authorization: Token $TOKEN" \
+     http://localhost:8000/api/inventory/
+# Increase stock for an item
+curl -X POST -H "Authorization: Token $TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"item_no": "ABC-001", "amount": 5}' \
+     http://localhost:8000/api/add-stock/
+# Query DBUpdater for products containing "Widget"
+curl -X POST -H "Authorization: Token $TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"title": "Widget"}' \
+     http://localhost:8000/api/query-dbu-item/
+```
+Example payload for `POST /api/receive/`:
+
+```json
+{
+  "order_number": "1234",
+  "items": [
+    {
+      "item_no": "ABC-001",
+      "title": "Widget",
+      "price": "12.50",
+      "quantity": 2,
+      "uom": "stk",
+      "total": "25.00"
+    }
+  ]
+}
+```
+
+The endpoint responds with `{ "status": "created" }` on success.
+
+Outside the `/api/` namespace InventoryManager also exposes:
+
+- `GET /health/` – basic health check
+- `GET /metrics/` – Prometheus metrics endpoint
 
 Responses are JSON. The DBU client automatically authenticates using environment variables as shown in `core/clients/dbu.py`.
 
