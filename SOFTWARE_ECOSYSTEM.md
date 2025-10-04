@@ -4,78 +4,30 @@
 
 This document outlines the architecture and responsibilities of the PJS Collectables software ecosystem. It unifies context from:
 
-- **InfrastructureStack** – shared infrastructure layer (monitoring, logging, secrets)
-- **DBUpdater** – single source of truth for product data
-- **InventoryManager** – stock and order management system
+- **InfrastructureStack [IS]** – shared infrastructure layer (monitoring, logging, secrets)
+- **DBUpdater [DBU]** – single source of truth for product data
+- **InventoryManager [IM]** – stock and order management system
+- **MailBot [MB]** – automated email parser forwarding structured order data
 - **pjs-ecosystem-docs** - SSOT for the whole ecosystem documentation for centralized scalability.
 ```mermaid
 flowchart LR
-    %% --- Infrastructure Stack ---
-    subgraph InfrastructureStack["InfrastructureStack"]
-        Nginx["nginx 80/443"]
-        ISWeb["is-web"]
-        Prometheus["Prometheus"]
-        Loki["Loki"]
-        Grafana["Grafana"]
-        Vault["Vault"]
-        Vector["Vector"]
-    end
 
-    %% --- External ---
-    Internet(("Internet")) --> Nginx
-    Nginx --> ISWeb
-    ISWeb --> Prometheus
-    Vector --> Loki
-    Prometheus --> Grafana
-    Loki --> Grafana
+    IS["IS (InfrastructureStack)"] <-->  DBU["DBU (DBUpdater)"]
+    IS <-->  IM["IM (InventoryManager)"]
+    DBU <-->  IM
+    Internet(("Internet")) -->  IS
+    MB["MB (Mailbot)"] -->  DBU
+    Inbox(Mail Inbox) --> |TLS| MB
+    MB -->  IM
+ 
 
-    %% --- IS tracking ---
-    ISWeb --> DBUWeb
-    ISWeb --> IMWeb
-    ISWeb --> shop_backend["shop_backend"]
-    
-    %% --- Vault access ---
-    Vault --> ISWeb
-    Vault --> DBUWeb
-    Vault --> DBUWorker
-    Vault --> IMWeb
-    Vault --> IMWorker
-
-    %% --- Prometheus scrapes ---
-    Prometheus --> DBUWeb
-    Prometheus --> IMWeb
-
-    %% --- DBUpdater ---
-    subgraph DBUpdater["DBUpdater"]
-        DBUVault["Vault Agent"] --> DBUWeb
-        DBUVault --> DBUWorker
-        DBUCron["Cron Cleanup"] --> DBUWeb
-        DBUWorker --> DBUWeb
-        DBUWorker --> DBUDB[("PostgreSQL")]
-        DBUWeb --> DBUDB
-    end
-
-    %% --- Inventory Manager ---
-    subgraph InventoryManager["InventoryManager"]
-        IMWeb --> DBUAPI["DBU API external"]
-        IMWeb --> IMDB[("PostgreSQL")]
-        IMWeb --> Rabbit["Queue RabbitMQ"]
-        IMWeb --> Vector
-        IMWorker --> IMDB
-        IMWorker --> Rabbit
-    end
-
-    %% --- API integration ---
-    DBUWeb --> IMWeb
-
-    %% --- Styling ---
-    style ISWeb stroke-width:2px,stroke-dasharray: 0
 ```
 
 ## Contents
 - [InfrastructureStack](#infrastructurestack-context)
 - [DBUpdater](#dbupdater-context)
 - [InventoryManager](#inventorymanager-context)
+- [MailBot](#mailbot-context)
 - [Ecosystem Documentation](#Ecosystem-Docs)
 
 ---
@@ -376,6 +328,94 @@ When the Analysis app is enabled, `/analysis/` serves a page with chart data for
 ### Deployment with DBUpdater
 
 DBUpdater is deployed as a separate Compose project but typically runs on the same VPS as InventoryManager. It uses its own `dbu-net` network while InventoryManager stays on `im-net`. To allow communication, expose the DBUpdater web container (usually named `dbu-web`) and set `DBU_BASE_URL` to that address. Configure the `DBU_*` variables in `.env` (or fetch them from Vault) and start each stack with `docker compose up -d`. This keeps the projects isolated while letting the `DBUClient` authenticate and retrieve product details.
+
+# MailBot Context
+
+## Summary
+
+MailBot automates ingestion of order confirmation emails and forwards structured JSON payloads to downstream services. It runs as a headless service that orchestrates an IMAP `Receiver`, an HTML `Processor` and a resilient `SenderAPI` so the rest of the ecosystem can consume orders without manual data entry. Logs are emitted to stdout for collection by InfrastructureStack's Vector service and are also written to a file for local inspection. Basic Prometheus metrics are exposed via `prometheus_client` on `/metrics` for scraping.
+
+```mermaid
+flowchart LR
+    subgraph MailBot
+        Cron[Cron Job scheduled daily]
+        Controller --> Receiver
+        Receiver --> Processor
+        Processor --> SenderAPI
+    end
+    Receiver <-->|IMAP| GMX["GMX Mailbox"]
+    SenderAPI -->|POST order JSON| DBUpdater
+    SenderAPI -->|POST order JSON| InventoryManager
+```
+
+## Purpose
+
+MailBot relieves other services from parsing vendor emails. By continuously polling a shared mailbox, extracting orders and pushing them to DBUpdater and InventoryManager, it ensures the catalogue and inventory remain synchronised with incoming quotes. Without this relay the ecosystem would require manual transfers, leaving gaps in product data and stock levels.
+
+## Repository layout
+- `MailBot/` – source package
+  - `app.py` – command-line entry point
+  - `controller.py` – starts and stops background workers
+  - `receiver.py` – IMAP client fetching mails since `SINCE_DATE`
+  - `processor.py` – HTML parser extracting `order_number` and `items`
+  - `sender_api.py` – HTTP client with retry queues for DBU and IM
+  - `logging_config.py` – shared logger configuration
+  - `config.py` and `utils.py` – common helpers
+- `Dockerfile` – container image for running MailBot
+- `example.env` – template for `gmx.env` containing API URLs (mail credentials provided via Docker secrets)
+ 
+Mail credentials are supplied through Docker secrets to keep them off disk and
+out of `docker inspect` output. Create `gmx_email.secret` and
+`gmx_password.secret` files beside `docker-compose.yml`; Compose mounts them at
+`/run/secrets/...` where `config.py` reads the values.
+
+## Integration with other Projects
+Configure `gmx.env` with the endpoints of services that should receive data:
+
+```dotenv
+DBU_API_URL=https://dbu.example.com/api/email-data/
+IM_API_URL=https://inventory.example.com/api/receive/
+```
+
+The `SenderAPI` issues `POST` requests with the body:
+
+```json
+{
+  "order_number": "1234",
+  "items": [
+    {
+      "item_no": "ABC-001",
+      "title": "Widget",
+      "price": "12.50",
+      "discount": "5%",
+      "quantity": "2",
+      "uom": "stk",
+      "total": "25.00"
+    }
+  ]
+}
+```
+
+DBUpdater consumes this payload at `/api/email-data/` to adjust product discounts while InventoryManager stores the same structure via `/api/receive/`. Both endpoints must be reachable from the MailBot host. Failed transmissions are written to `failed_dbu_orders.json` or `failed_im_orders.json` for later retry.
+
+When running MailBot inside Docker, use the provided `docker-compose.yml`
+which attaches the container to the `dbu-net`, `im-net` and `is-net` networks so
+it can contact DBUpdater and InventoryManager and expose logs and metrics to the
+InfrastructureStack services.
+
+## Core services
+
+### Receiver
+Connects to the IMAP server defined by `GMX_EMAIL` and `GMX_PASSWORD`. It scans messages since `SINCE_DATE`, then advances the date to the current day after each run so subsequent invocations only fetch newer mail. Polling runs in a dedicated thread so it can stop the loop gracefully.
+
+### Processor
+Parses HTML bodies with BeautifulSoup. It extracts the order number and item rows from a specific table layout, then assembles the JSON document and forwards it to the `SenderAPI` for delivery.
+
+### SenderAPI
+Posts JSON to the configured endpoints. On errors it persists the payload to a local file and exposes `retry_dbu_orders` and `retry_im_orders` functions that flush the queues.
+
+### Controller
+`Controller` wraps the receiver loop and exposes `start` and `stop` methods used by the command-line entry point.
 
 # Ecosystem Docs
 
