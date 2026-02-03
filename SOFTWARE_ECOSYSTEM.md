@@ -476,6 +476,119 @@ Posts JSON to the configured endpoints. On errors it persists the payload to a l
 ### Controller
 `Controller` wraps the receiver loop and exposes `start` and `stop` methods used by the command-line entry point.
 
+# Shop Context
+
+## Summary
+
+PJsShop is the Django-based commerce backend that powers the PJS Collectables storefront. It exposes a REST API for products, categories, carts, orders, and user profiles, and provides server-rendered pages for the homepage and admin analytics. The service owns the canonical shop data (catalog, carts, orders, user profiles, uploaded product media) and integrates with PayPal for payment capture. It is the operational backend that the PJsShopFront UI and other ecosystem clients depend on to browse inventory and place orders.
+
+```mermaid
+flowchart LR
+    Browser["Customers / Admins"] -->|HTTP :8000| Web["PJsShop Django App<br/>public: http://HOST:8000<br/>internal DNS: pjs-shop-web"]
+    Web -->|SQLite file| DB[(db.sqlite3)]
+    Web -->|media files| Media[(media/)]
+    Web -->|REST API| Frontend["PJsShopFront (Vue)<br/>public: http://HOST:5173"]
+    Web -->|HTTPS| PayPal["PayPal API<br/>api-m.sandbox.paypal.com"]
+```
+
+## Purpose
+
+PJsShop fulfills the role of the transactional backend in the ecosystem. It centralizes product catalog metadata, pricing, categories, carts, orders, and user profile/address data so other services and frontends do not duplicate this domain logic. The project depends on external payment processing (PayPal) and a Django-authenticated session store to maintain user state. It owns the order lifecycle, cart state, and product catalog, and receives product imports via management commands that read Excel data; it emits order/payment state to the frontend and admin interfaces. This backend is critical because it is the only service that can authenticate users, persist carts, and record orders for fulfillment.
+
+## Repository layout
+
+- `manage.py` – Django management entry point (migrations, runserver, data imports).
+- `myshop/` – Project configuration (settings, URL routing, WSGI/ASGI entry points).
+- `store/` – Core application with models, serializers, API views, templates, and management commands.
+  - `management/commands/` – Data import/update commands (products, photos, licenses/categories).
+  - `templates/` – Server-rendered pages including homepage and admin analytics.
+- `data/` – Excel source files for bulk product import.
+- `media/` – Uploaded product images and media assets.
+- `db.sqlite3` – Local SQLite database used for development and small deployments.
+- `requirements.txt` – Python dependencies.
+
+## Integration with other Projects
+
+### Service endpoints
+
+PJsShop is a Django REST Framework API backed by session authentication. Integrators should treat the service as the authoritative catalog and order system.
+
+| Interface | Location | Auth | Schema / Notes | Errors |
+| --- | --- | --- | --- | --- |
+| CSRF/session bootstrap | `POST /api/session/` | None | Sets CSRF cookie + session for browser clients. | 403 (CSRF), 405 |
+| Product catalog | `GET/POST /api/products/` | Read: none, Write: session | JSON list of products (paginated). POST accepts product fields. | 400, 401/403 |
+| Product detail | `GET/PUT/DELETE /api/products/{id}/` | Read: none, Write: session | JSON detail for a product. | 404, 401/403 |
+| Category list | `GET /api/categories/` | None | JSON list of categories. | 200/404 |
+| Cart detail | `GET/PUT/DELETE /api/cart/` | Session | JSON cart with items and totals. | 401/403 |
+| Cart mutation | `POST /api/cart/add/` & `POST /api/cart/remove/` | Session | JSON payload with product IDs + quantity. | 400, 401/403 |
+| Order creation | `POST /api/orders/create/` | Session | Creates an order from cart items. | 400, 401/403 |
+| Order list/detail | `GET/POST /api/orders/`, `GET /api/orders/{id}/` | Session | Lists user orders or creates new. | 400, 401/403 |
+| Profile & wishlist | `GET /api/profile/`, `GET /api/profile/wishlist/` | Session | User profile, addresses, wishlist. | 401/403 |
+| Profile orders | `GET /api/profile/orders/` | Session | Paged order history for user. | 401/403 |
+| Account auth | `POST /api/register/`, `POST /api/login/`, `POST /api/logout/`, `POST /api/profile/delete/` | Session | JSON payload with credentials or profile actions. | 400, 401 |
+| PayPal | `GET /api/paypal/client-id/`, `POST /api/paypal/create-order/`, `POST /api/paypal/capture-order/` | None (server-side) | Proxies PayPal order creation/capture using server credentials. | 400, 502/503 |
+| Admin analytics | `GET /admin/analytics/` | Admin session | Server-rendered dashboard for totals. | 302/403 |
+
+### Data contracts
+
+- **Product**: `id`, `description`, `sell_price`, `category`, `release_date`, `preorder_deadline`, `item_description`, `is_on_sale`, `photo`, `language`.
+- **Order**: `id`, `user`, `status`, `order_items`, `total_price`.
+- **Cart**: `id`, `user`, `items`, `total_cost`.
+
+### Authentication & sessions
+
+Browser-based clients authenticate via Django sessions. The frontend should first call `/api/session/` to receive CSRF and session cookies before POST/PUT/DELETE requests. API responses are JSON; errors surface as DRF validation payloads or simple JSON messages from custom auth endpoints.
+
+## Core services
+
+### Catalog & category APIs
+The product catalog is exposed via `ProductListCreateView` and `ProductDetailView`. The backend enforces product metadata (pricing, availability, category linkage) and uses a `Category` hierarchy to organize browsing. The catalog is the authoritative record for the storefront and is also used to generate the homepage listing.
+
+### Cart lifecycle
+Cart data is stored in `Cart` and `CartItem`. `AddToCartView` and `RemoveFromCartView` mutate cart items, while `CartDetailView` exposes the current cart. Cart totals are derived from item prices, so downstream systems should treat PJsShop as the single source for cart cost calculations.
+
+### Order orchestration
+Orders are created either directly through `OrderListCreateView` or via `CreateOrderView`, which binds cart contents to a new order and tracks status transitions (`Pending`, `Completed`, `Canceled`, `Shipped`). Orders hold item relationships via `OrderItem` and can associate billing/shipping addresses for fulfillment.
+
+### User profiles & addresses
+`UserProfile` stores billing/shipping addresses, wishlist data, and preferred language. `UserProfileView`, `WishlistView`, and `OrdersView` provide a user-centric view of profile data and history. This service owns the user’s commerce profile and is the authoritative address book for orders.
+
+### Payment integration (PayPal)
+The PayPal endpoints obtain an OAuth token using server-side credentials and create or capture PayPal orders. The frontend calls `/api/paypal/client-id/` to initialize the PayPal SDK, then POSTs totals or PayPal order IDs to the backend for creation/capture. Failures are surfaced as JSON error payloads to the caller.
+
+### Data import & enrichment
+Management commands (`update_products`, `update_licenses_and_categories`, `update_fotos_and_description`) ingest Excel data from `data/BigItems.xlsx` and map licenses/categories for the catalog. This is the primary ingestion mechanism for bulk updates and is owned by PJsShop.
+
+## Operations & Lifecycle
+
+### Runtime behavior
+
+- **Startup dependencies & ordering**: Requires Django migrations applied to `db.sqlite3` (or an alternate database if configured). No external service dependencies are required for boot, but PayPal calls will fail if credentials or network access are missing.
+- **Shutdown behavior**: Django shuts down after completing in-flight requests; SQLite writes are flushed as part of normal Django ORM transaction handling.
+- **Health definition**: Healthy means the Django process is running and can execute ORM queries against the configured database. A basic health probe can request `/api/products/` or `/admin/` and expect a 200/302.
+- **Readiness vs liveness**: Liveness is process-level (the server is up); readiness is database connectivity plus availability of media storage and session tables.
+- **Volume mounts**: Avoid conflicts by mounting `media/` as a writable persistent volume and preserving `db.sqlite3` for stateful data. If using imports, mount `data/` read-only so the Excel file remains consistent.
+
+### Failure behavior
+
+- **Service unavailable**: The storefront cannot browse products or place orders; PJsShopFront should show a maintenance state and retry.
+- **Retry/backoff**: API consumers should implement exponential backoff on 5xx responses. PayPal operations may need retry after transient 502/503 or network errors.
+- **Idempotency**: Order creation endpoints do not advertise idempotency keys; clients should avoid retrying POSTs without deduplication.
+- **Partial failures**: PayPal capture can fail after order creation; the backend returns a failure JSON that clients must handle by prompting retry or cancellation.
+- **Local mocking/stubbing**: In development, stub PayPal by running in sandbox mode and using mocked totals; for offline work, disable PayPal calls and rely on cart/order endpoints only.
+
+### Scaling behavior
+
+- **Stateful vs stateless**: Stateful, because carts, orders, and sessions are stored in the database (SQLite by default).
+- **Horizontal scaling**: Limited when using SQLite; for multi-instance scaling, move to a shared database and shared media storage. Session affinity may be needed for session-based auth.
+- **Known bottlenecks**: SQLite write locks can block concurrent writes, particularly during imports or high order volume.
+
+### Replacement & evolution
+
+- **Stable contracts**: REST endpoints, payload fields, and session-based authentication must remain stable for PJsShopFront and other clients.
+- **Allowed changes**: Internal models, admin tooling, and catalog enrichment logic can evolve if API responses remain backward compatible.
+- **Deprecation**: Introduce new endpoints or fields in parallel, keep old fields for at least one release, and document removals in the ecosystem docs before breaking changes.
+
 # Ecosystem Docs
 
 ## Purpose
@@ -1134,5 +1247,4 @@ Ability to swap or upgrade components seamlessly.
 - **Interface Abstraction Patterns** – decoupled component design
     
 - **Microservice Architecture** – independent module replacement
-
 
