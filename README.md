@@ -84,11 +84,13 @@ jobs:
 
 ### 2) Ensure the target repo can accept dispatch events
 
-The target repository **does not need** any extra secret for receiving `repository_dispatch` events. It just needs the workflow above committed to the default branch.
+The target repository **does not need** any extra secret for receiving `repository_dispatch` events. It just needs the workflow above committed to the default branch. 
+
+**Important: Repo Settings → Actions → Generel → Workflow permissions MUST be on Read and Write Permssion!**
 
 ### 3) Optional: protect the doc location
 
-If your repo uses branch protections, ensure that your workflow is allowed to push commits (or adjust the workflow to open a pull request instead of pushing directly).
+If your repo uses branch protections, ensure that your workflow is allowed to push commits.
 
 ## How another Repository starts pushing updates to the SSOT doc
 
