@@ -30,6 +30,8 @@ flowchart LR
 - [DBUpdater](#dbupdater-context)
 - [InventoryManager](#inventorymanager-context)
 - [MailBot](#mailbot-context)
+- [PJsShopFront](#shop-front-context)
+- [PJsShop](#shop-context)
 - [Ecosystem Documentation](#Ecosystem-Docs)
 - [Development Regulation Standards](#Development-Regulation-Standards)
 ---
