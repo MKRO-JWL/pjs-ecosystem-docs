@@ -476,6 +476,110 @@ Posts JSON to the configured endpoints. On errors it persists the payload to a l
 ### Controller
 `Controller` wraps the receiver loop and exposes `start` and `stop` methods used by the command-line entry point.
 
+# Shop Front Context
+
+## Summary
+
+PJsShopFront is the Vue 3 + Vite storefront UI for PJS Collectables. It renders the customer-facing catalog, cart, checkout, and profile flows while delegating authoritative commerce data and payment orchestration to the PJsShop backend. The frontend is the ecosystem’s browser entrypoint: it drives user sessions, fetches product/category data, and triggers order creation through the backend APIs.
+
+```mermaid
+flowchart LR
+    Browser["Customers / Admins"] -->|HTTP :5173| Frontend["PJsShopFront (Vue)<br/>public: http://HOST:5173<br/>internal DNS: pjs-shop-front"]
+    Frontend -->|REST + session cookies| ShopAPI["PJsShop API<br/>public: http://HOST:8000<br/>internal DNS: pjs-shop-web"]
+    Frontend -->|PayPal SDK setup (client id)| ShopAPI
+```
+
+## Purpose
+
+PJsShopFront exists to deliver the interactive customer experience for the ecosystem. It translates catalog and checkout flows into UI actions while relying on PJsShop as the canonical system of record for products, carts, orders, and payment capture. This frontend is critical because it is the only project that turns the backend services into an accessible storefront; without it, the ecosystem lacks a usable customer entrypoint and an authenticated session flow that bridges browser users to the transactional backend.
+
+## Repository layout
+
+- `index.html` – Vite HTML entrypoint.
+- `src/` – Vue application source.
+  - `main.js` – app bootstrap (Vue + router).
+  - `App.vue` – root component layout.
+  - `router/` – route definitions for pages.
+  - `views/` – page-level view components (catalog, cart, profile, checkout).
+  - `components/` – reusable UI building blocks.
+  - `services/` – API client, global session/cart state, and profile helper.
+  - `assets/` – static images and styling assets.
+- `public/` – static files served as-is by Vite.
+- `package.json` – scripts and dependencies.
+- `vite.config.js` – Vite build + dev server config.
+- `tailwind.config.js`, `postcss.config.js` – styling pipeline configuration.
+
+## Integration with other Projects
+
+### Service endpoints
+
+PJsShopFront is a browser client that consumes the PJsShop REST API. The API base URL is configured in `src/services/api.js` as `http://127.0.0.1:8000/api/` and must be updated or parameterized for non-local deployments. The frontend assumes cookie-based sessions and CSRF tokens from PJsShop. It does not authenticate directly with DBUpdater or InventoryManager; all commerce data flows through PJsShop.
+
+| Interface | Location (PJsShop) | Auth | Schema / Notes | Errors (client-facing) |
+| --- | --- | --- | --- | --- |
+| Session bootstrap | `GET /api/session/` | None | Returns `sessionid`, `csrftoken`, `is_authenticated` for browser usage. | 403 (CSRF), 5xx |
+| Categories | `GET /api/categories/` | None | Filter by `parent`/`name`/`is_active` params. | 404/5xx |
+| Products | `GET /api/products/` | None | Supports pagination and `category__name` filter. | 404/5xx |
+| Cart | `GET/POST /api/cart/`, `POST /api/cart/add/`, `POST /api/cart/remove/` | Session + CSRF | JSON cart payload with items and totals. | 401/403, 5xx |
+| Checkout | `GET /api/checkout/initiate/` | Session | Returns address defaults and cart state. | 401/403, 5xx |
+| Orders | `POST /api/orders/create/` | Session + CSRF | Creates order from cart + PayPal metadata. | 400, 401/403, 5xx |
+| Auth | `POST /api/login/`, `POST /api/register/`, `POST /api/logout/`, `POST /api/profile/delete/` | Session + CSRF | JSON credentials or profile operations. | 400, 401/403 |
+| Profile | `GET/PATCH /api/profile/` | Session + CSRF | User details, addresses, wishlist. | 401/403, 5xx |
+| PayPal | `GET /api/paypal/client-id/`, `POST /api/paypal/create-order/`, `POST /api/paypal/capture-order/` | None (server-side secrets) | PayPal init + capture, proxied via PJsShop. | 400, 502/503 |
+
+### Data contracts and auth
+
+- **Session & CSRF**: PJsShopFront must call `/api/session/` once per browser session and attach the `X-CSRFToken` header on mutating requests. Cookies are stored by the browser and reused by Axios.
+- **Cart payloads**: Cart endpoints expect `product_id` and `quantity` for mutations; responses include `items` and `total` values.
+- **PayPal capture**: After PayPal approval, the frontend calls `POST /api/paypal/capture-order/` with `{ orderId }`, then `POST /api/orders/create/` with `{ transactionDetails, total }`.
+
+## Core services
+
+### API client and session bootstrap
+`src/services/api.js` defines a shared Axios client with `withCredentials: true` to include cookies. It initializes the session via `GET /api/session/`, stores CSRF/session identifiers, and injects `X-CSRFToken` headers for POST/PUT/PATCH/DELETE. This is the single integration point that other services depend on for authenticated browser flows.
+
+### Catalog browsing
+`fetchUpcoming`, `fetchProductsByCategoryNames`, and `fetchCategoryAndSubcategories` orchestrate category and product queries, handling pagination and hierarchical category structures. These functions are the backbone of catalog and upcoming-product views and rely on PJsShop to supply filtered product data.
+
+### Cart and checkout flows
+Global cart state is managed in `src/services/globals.js` using reactive Vue state and `fetchCartDetails`, `addToCart`, and `removeFromCart` API calls. Checkout initiation and order creation funnel through `fetchCheckoutInitiate` and `createOrder`, keeping PJsShop as the source of truth for totals and line items.
+
+### Account and profile management
+`loginUser`, `registerUser`, `logoutUser`, `deleteUser`, `fetchProfile`, and `updateProfile` in `api.js` provide the user account lifecycle. `useProfile` wraps the profile API to maintain a reactive profile object that view components can bind to for account management.
+
+### PayPal integration
+The frontend requests the PayPal client ID from `GET /api/paypal/client-id/` and uses backend endpoints to create and capture orders. All PayPal secrets remain server-side in PJsShop; the frontend merely relays approval and total values to the backend for capture and order creation.
+
+## Operations & Lifecycle
+
+### Runtime behavior
+
+- **Startup dependencies & ordering**: Requires the PJsShop backend to be reachable at the configured base URL before the UI can load dynamic data. Static assets and routing can load without backend access, but catalog/cart/profile data will fail without PJsShop.
+- **Shutdown behavior**: Stateless; closing the Vite dev server or static host terminates the service without cleanup requirements.
+- **Health definition**: Healthy means the static bundle is served and the API base URL responds to `/api/session/` with a 200. For operators, readiness implies the browser can fetch products and categories without 5xx errors.
+- **Readiness vs liveness**: Liveness is the frontend server serving assets; readiness is the ability to reach PJsShop and fetch session data. The UI should show a degraded/maintenance view when backend access fails.
+- **Volume mounts**: None required. Avoid mounting `node_modules` or build output into shared volumes that might conflict with parallel frontend services.
+
+### Failure behavior
+
+- **Service unavailable**: If PJsShop is down, the storefront should show a maintenance or error state; cart and checkout operations must be disabled until `/api/session/` and catalog endpoints respond.
+- **Retry/backoff**: Client-side retries should be minimal; use exponential backoff on 5xx when reloading catalog data or checkout flows. Avoid repeating order creation POSTs without user confirmation.
+- **Idempotency**: Order creation is not idempotent; the frontend must prevent double-submit (disable submit buttons, require single PayPal capture per order).
+- **Partial failures**: PayPal capture can succeed while order creation fails; the UI must surface the failure and instruct the user to retry or contact support.
+- **Local mocking/stubbing**: For local UI-only work, mock API responses with static JSON or use browser-based service worker mocks. Otherwise, run PJsShop locally and keep the base URL on `http://127.0.0.1:8000/api/`.
+
+### Scaling behavior
+
+- **Stateful vs stateless**: Stateless. Browser sessions are stored server-side in PJsShop; the frontend can be scaled via static hosting or multiple containers.
+- **Horizontal scaling**: Unlimited for static hosting; the only constraint is backend capacity and browser session throughput.
+- **Known bottlenecks**: Backend response times dominate perceived performance; large product lists can stress pagination and rendering.
+
+### Replacement & evolution
+
+- **Stable contracts**: API routes, session/CSRF flow, and payload schemas with PJsShop must remain stable so the UI can function without changes.
+- **Allowed changes**: UI component structure, route layout, or styling can evolve independently as long as API contracts are preserved.
+- **Deprecation**: When PJsShop endpoints change, introduce versioned APIs or backwards-compatible fields. Frontend should support both during a transition window and update the documented base URL once migrated.
+
 # Shop Context
 
 ## Summary
@@ -1247,4 +1351,3 @@ Ability to swap or upgrade components seamlessly.
 - **Interface Abstraction Patterns** – decoupled component design
     
 - **Microservice Architecture** – independent module replacement
-
