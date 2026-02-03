@@ -90,7 +90,7 @@ The target repository **does not need** any extra secret for receiving `reposito
 
 If your repo uses branch protections, ensure that your workflow is allowed to push commits (or adjust the workflow to open a pull request instead of pushing directly).
 
-## How a repo starts pushing updates to the SSOT doc
+## How another Repository starts pushing updates to the SSOT doc
 
 When a repo wants to **push its local `SOFTWARE_ECOSYSTEM.md`** back to the SSOT:
 
@@ -101,13 +101,13 @@ When a repo wants to **push its local `SOFTWARE_ECOSYSTEM.md`** back to the SSOT
 
 This is all that’s required for pushing; no dispatch token is needed in the sender repo.
 
-## What this repo needs to include a new project
+## What this Repository needs to include a new project
 
 When you want this repo to **notify a new project**:
 
 1. **Add the repo to the dispatch list** in `.github/workflows/dispatch_to_peers.yml` under the `REPOLIST` heredoc.
-2. **Ensure `DISPATCH_PAT` is set** in this repo’s secrets. It must have permission to call `repository_dispatch` on the target repo(s).
-3. **Verify the target repo has the receiver workflow** (described above) so it can act on `sync_requested`.
+2. **Ensure `DISPATCH_PAT` is set** in this repo’s secrets. It must have permission to call `repository_dispatch` on the target repo(s). See Steps below.
+3. **Verify the target repo has the receiver workflow** (described above) so it can act on `sync_requested`. Make sure any recipient Repository is merged to main branch to avoid conflicts!
 
 ## Token setup and where to edit fine-grained access
 
