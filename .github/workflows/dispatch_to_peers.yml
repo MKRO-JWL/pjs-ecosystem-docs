@@ -24,6 +24,8 @@ jobs:
           MKRO-JWL/DBUpdater
           MKRO-JWL/InventoryManager
           MKRO-JWL/MailBot
+          MKRO-JWL/PJsShopFront          
+          MKRO-JWL/PJsShop
           REPOLIST
           echo "EOF" >> $GITHUB_OUTPUT
 
