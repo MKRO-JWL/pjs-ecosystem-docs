@@ -22,7 +22,6 @@ flowchart LR
     Inbox(Mail Inbox) --> |TLS| MB
     MB -->  IM
  
-
 ```
 
 ## Contents
