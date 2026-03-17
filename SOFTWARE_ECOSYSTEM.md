@@ -2,7 +2,10 @@
 
 ## Overview
 
-This document outlines the architecture and responsibilities of the PJS Collectables software ecosystem. It unifies context from:
+This document outlines the architecture, dependencies and responsibilities of the 
+PJS Collectables software ecosystem. It unifies context from all individual programs.
+<span style="color:green">Django</span> is the Framework used for all Ecosystem modules.
+[Visit the Django Docs](https://www.djangoproject.com/)
 
 - **InfrastructureStack [IS]** – shared infrastructure layer (monitoring, logging, secrets)
 - **DBUpdater [DBU]** – single source of truth for product data
@@ -10,7 +13,6 @@ This document outlines the architecture and responsibilities of the PJS Collecta
 - **MailBot [MB]** – automated email parser forwarding structured order data
 - **pjs-ecosystem-docs** - SSOT for the whole ecosystem documentation for centralized scalability
 - **Development Regulation Standards** - Centralized standard development audit reference
-> **Legacy Note:** Vault references in the diagram are commented out because Vault is legacy (overkill: complex ops, unseal process, HA setups, storage backends). Docker secrets with strict host hygiene now satisfy secret management.
 ```mermaid
 flowchart LR
 
@@ -21,7 +23,6 @@ flowchart LR
     MB["MB (Mailbot)"] -->  DBU
     Inbox(Mail Inbox) --> |TLS| MB
     MB -->  IM
- 
 ```
 
 ## Contents
@@ -272,7 +273,13 @@ Centralising catalogue management in DBUpdater reduces duplicated logic across t
 # InventoryManager Context
 
 ## Project Summary
-InventoryManager is a Django-based service that manages orders and stock items while synchronising product metadata from an external DBU API. It exposes REST endpoints for CRUD operations on inventory, provides Celery tasks for background processing and offers chart visualisations of upcoming payments through the optional Analysis app.
+InventoryManager<span style="color:yellow"> (IM) </span>is the central<span style="color:red"> _Inventory Management System_
+(**IMS**)</span> that holds data about the stock while synchronising product 
+metadata with the [DBU](#dbupdater-context). 
+It exposes REST endpoints for CRUD operations on 
+inventory, (TODO GO AND CHECK WHY THE HECK I NEED CELERY FOR?!)
+provides Celery tasks for background processing and offers chart 
+visualisations, data tracking and more through the Analysis app.
 
 ```mermaid
 flowchart TD
@@ -296,7 +303,31 @@ flowchart TD
 ```
 
 ## Purpose
-InventoryManager acts as a centralised order and inventory tracker. Incoming orders are accepted via the REST API and persisted together with their products. CRUD endpoints allow the companion **IMApp** to adjust stock levels. The service also synchronises item metadata from the DBU API so that product information stays consistent across platforms. When enabled, the Analysis app can generate charts for upcoming payments, enabling further reporting.
+InventoryManager exists to provide the ecosystem’s **operational inventory ledger**: 
+the place where stock state is clearly documented and utilized for business decisions. 
+Without this service, DBUpdater would have no specialised source of centralized data
+that cannot be crawled on the websites of suppliers.
+
+It also serves regulatory procedures like stock taking and data for planning upcoming
+expenses or money allocation.
+
+####
+Architecturally, InventoryManager depends on:
+- **DBUpdater** as the upstream source of product metadata used to enrich and validate local item records.
+- **MailBot/IMApp** as upstream producers of order or stock-change requests.
+- **InfrastructureStack** for runtime concerns(metrics, logs, secrets, and platform operations).
+
+What InventoryManager owns is the downstream decision surface for fulfilment:
+- it persists canonical orders form suppliers and inventory state;
+- it applies business mutations (add/reduce/delete/confirm stock actions);
+- it exposes API responses other services and interfaces consume to decide what can be sold, shipped, or analysed.
+
+Data flow is intentionally directional: product definitions flow **into** 
+[DBU](#dbupdater-context) from IM after data upload, 
+operational events flow **into** IM from [IMApp](#imapp-context).
+Data flows **out** of IM after data upload of sold items from sales platforms.
+This makes InventoryManager a required control point for ecosystem consistency, 
+not an optional convenience layer.
 
 ## Repository layout
 - `Inventory/` – models, views, tasks and API serializers
@@ -584,7 +615,7 @@ The frontend requests the PayPal client ID from `GET /api/paypal/client-id/` and
 
 ## Summary
 
-PJsShop is the Django-based commerce backend that powers the PJS Collectables storefront. It exposes a REST API for products, categories, carts, orders, and user profiles, and provides server-rendered pages for the homepage and admin analytics. The service owns the canonical shop data (catalog, carts, orders, user profiles, uploaded product media) and integrates with PayPal for payment capture. It is the operational backend that the PJsShopFront UI and other ecosystem clients depend on to browse inventory and place orders.
+PJsShop is the Django-based commerce backend that powers the PJS Collectables storefront. It exposes a REST API for products, categories, carts, orders, and user profiles, and provides server-rendered pages for the homepage and admin analytics. The service (THIS SHOULD NOT OWN A DATASET EXCEPT SHOP DATA LIKE PROFILES AND WISHLISTS! AND SMALL DATASETS LIKE FEATURES ITEMS OR SALE!)owns the canonical shop data (catalog, carts, orders, user profiles, uploaded product media) and integrates with PayPal for payment capture. It is the operational backend that the PJsShopFront UI and other ecosystem clients depend on to browse inventory and place orders.
 
 ```mermaid
 flowchart LR
