@@ -86,7 +86,7 @@ jobs:
 
 The target repository **does not need** any extra secret for receiving `repository_dispatch` events. It just needs the workflow above committed to the default branch. 
 
-<span style="color: red;">Important</span>: Repo Settings → Actions → Generel → Workflow permissions MUST be on Read and Write Permssion!**
+<span style="color:red;">Important</span>: Repo Settings → Actions → Generel → Workflow permissions MUST be on Read and Write Permssion!**
 
 ### 3) Optional: protect the doc location
 
