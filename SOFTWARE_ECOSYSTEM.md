@@ -11,6 +11,7 @@ PJS Collectables software ecosystem. It unifies context from all individual prog
 - **DBUpdater [DBU]** – single source of truth for product data
 - **InventoryManager [IM]** – stock and order management system
 - **MailBot [MB]** – automated email parser forwarding structured order data
+- **LexwareAPI [LAPI]** – integration with bookkeeping software and central point for uploading and creating invoices 
 - **pjs-ecosystem-docs** - SSOT for the whole ecosystem documentation for centralized scalability
 - **Development Regulation Standards** - Centralized standard development audit reference
 ```mermaid
@@ -30,6 +31,7 @@ flowchart LR
 - [DBUpdater](#dbupdater-context)
 - [InventoryManager](#inventorymanager-context)
 - [MailBot](#mailbot-context)
+- [LexwareAPI](#lexwareapi-context)
 - [PJsShopFront](#shop-front-context)
 - [PJsShop](#shop-context)
 - [Ecosystem Documentation](#Ecosystem-Docs)
