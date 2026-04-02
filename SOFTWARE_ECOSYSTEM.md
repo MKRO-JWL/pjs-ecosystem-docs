@@ -18,11 +18,14 @@ flowchart LR
 
     IS["IS (InfrastructureStack)"] <-->  DBU["DBU (DBUpdater)"]
     IS <-->  IM["IM (InventoryManager)"]
+    IS <--> LAPI["LAPI (LexwareAPI)"]
     DBU <-->  IM
     Internet(("Internet")) -->  IS
     MB["MB (Mailbot)"] -->  DBU
     Inbox(Mail Inbox) --> |TLS| MB
     MB -->  IM
+    IM --> |Sold Orders / Payout CSV| LAPI
+    LAPI --> |Invoices / files| Lexoffice["Lexoffice API"]
 ```
 
 ## Contents
@@ -506,6 +509,189 @@ Posts JSON to the configured endpoints. On errors it persists the payload to a l
 
 ### Controller
 `Controller` wraps the receiver loop and exposes `start` and `stop` methods used by the command-line entry point.
+
+# LexwareAPI Context
+
+## Summary
+
+LexwareAPI is the ecosystem’s bookkeeping automation bridge. It converts exported commerce CSV data into Lexoffice invoices, assigns payouts back to pending invoice references, refreshes EU tax rates from Vatsense, and supports invoice-document upload workflows. It exposes job-oriented HTTP endpoints so other projects (or operators) can trigger accounting operations without embedding Lexoffice-specific logic in their own code.
+
+```mermaid
+flowchart LR
+    subgraph LexwareAPI
+        LAPI["LexwareAPI (Django)<br/>public: http://HOST:8000<br/>internal DNS: lexwareapi:8000"]
+        DB[(SQLite db.sqlite3)]
+        Media[/media/runtime_inputs]
+        Data[/example_data or /data]
+        LAPI --> DB
+        LAPI --> Media
+        LAPI --> Data
+    end
+
+    IM["Inventory/Order source exports"] -->|CSV exports| LAPI
+    LAPI -->|REST: invoices, contacts, vouchers, file upload| Lexoffice["api.lexware.io"]
+    LAPI -->|REST: tax rates| Vatsense["api.vatsense.com"]
+    Operators["Admin UI / automation"] -->|HTTP job triggers| LAPI
+```
+
+## Purpose
+
+LexwareAPI exists to isolate accounting-side complexity from the rest of the ecosystem. Other projects can produce transactional data (sold orders, payout summaries, invoice PDFs), while LexwareAPI owns:
+
+- transformation of CSV inputs into Lexoffice invoice payloads,
+- bookkeeping state tracking (job history, pending references/names, withdrawal match buckets, tax rates),
+- orchestration of retries/logging and operational diagnostics around those workflows.
+
+Architecturally this is critical rather than optional: without LexwareAPI, each producer service would need to directly implement Lexoffice auth, tax logic (Germany/EU/third-country), contact creation, voucher lookup, and payout matching rules. Centralizing those rules prevents divergent accounting behavior across projects.
+
+**Dependencies and ownership (data-flow direction):**
+
+- **Depends on:** upstream exported files (sold-orders and transaction-summary CSV), Lexoffice API, Vatsense API, local Django persistence.
+- **Owns:** `Job`/`JobLog` run history, `TaxRate` cache, pending invoice/order matching entities, runtime configuration, and upload validation behavior.
+- **Direction:** ecosystem producers push/provide files → LexwareAPI processes and enriches → LexwareAPI writes accounting side effects to Lexoffice and persists matching/tax metadata locally.
+
+## Repository layout
+
+- `lexware_settings/` – Django project configuration and URL root.
+  - `settings.py` – environment-driven runtime configuration (Lexoffice/Vatsense keys, input paths, upload limits, media/data paths).
+  - `urls.py` – routing for admin, current API routes, and legacy `/api/lexware/` compatibility prefix.
+- `lexware_core/` – domain app implementing API, jobs and bookkeeping state.
+  - `models.py` – runtime config, job/job logs, tax cache, pending references/names, withdrawal buckets.
+  - `views.py` – HTTP endpoints for health checks, async-like job creation, and file upload/validation.
+  - `services/jobs.py` – orchestration layer that executes workflows, captures stdout/stderr into ordered `JobLog` entries, and writes structured job results.
+  - `services/lexware.py` – Lexoffice/Vatsense integration and CSV-driven invoice/tax/assignment logic.
+  - `services/upload.py` – upload contract/validation and robust per-file result modeling.
+  - `management/commands/run_lexware.py` – CLI entrypoint for non-HTTP execution.
+- `docker-compose.yml` – container runtime definition (`lexwareapi` service on port `8000`, mounted data volumes).
+- `example_data/` – expected CSV/jsonl working data mount used during processing.
+- `media/` – persisted uploaded runtime input files (e.g., admin-managed CSV/PDF artifacts).
+
+## Integration with other Projects
+
+LexwareAPI exposes HTTP interfaces directly and through a legacy-compatible prefix. Current routes are available at `/...`; the same endpoints are additionally reachable via `/api/lexware/...`.
+
+### Interface contract
+
+| Interface | Location | Auth | Request schema | Success response | Error contract |
+| --- | --- | --- | --- | --- | --- |
+| Health probe | `GET /health/` | None | none | `{"status":"ok","service":"lexware-api"}` | Standard 5xx on unhandled server errors |
+| Start invoice-create job | `POST /jobs/invoice-create` | None | optional JSON payload (supports `runtime_config_id`) | `202` with serialized `Job` object | 5xx if orchestration fails before response |
+| Start invoice-assign job | `POST /jobs/invoice-assign` | None | optional JSON payload (supports `runtime_config_id`) | `202` with serialized `Job` object | 5xx pre-response failure |
+| Start tax-refresh job | `POST /jobs/tax-refresh` | None | optional JSON payload | `202` with serialized `Job` object | 5xx pre-response failure |
+| Start invoice-file-upload job | `POST /jobs/invoice-file-upload` | None | optional JSON payload | `202` with serialized `Job` object | 5xx pre-response failure |
+| Job status | `GET /jobs/{id}` | None | path param `id:int` | `200` with `Job` + nested `logs[]` | `404` with `{"detail":"Job not found."}` |
+| Validate file selection | `POST /upload/validate/` | None | JSON object: `files[]`, optional `upload_type`, `max_file_size_bytes`, `strict_pdf` | `200` with normalized file list and count | `400` with `{status,error_type,message}` for JSON/validation errors |
+| Upload files to Lexoffice | `POST /upload/` | None | JSON object: `files[]`, optional `access_token`, `upload_type`, `timeout_seconds`, `max_file_size_bytes`, `base_url`, `endpoint` | `200` with `{all_succeeded,successes[],failures[]}` | `400` validation/JSON errors; upstream API failures are reported per file in `failures[]` |
+| Legacy command endpoint | `POST /run/` | None | none | `{"status":"completed"}` | 5xx if runtime execution crashes |
+
+### Service discovery and network location
+
+- **Public/local endpoint:** `http://localhost:8000` (compose publishes `8000:8000`).
+- **Internal Docker DNS:** `lexwareapi:8000` (service/container name in compose).
+- **Remote callers:** should use `LEXWARE_API_SERVICE_URL` for environment-specific base URL discovery.
+
+## Core services
+
+### 1) Job orchestration and observability service
+
+`run_job(...)` is the core control plane. It immediately persists a `Job` in running state, executes the selected workflow, captures stdout/stderr into ordered `JobLog` rows, then marks completion/failure with structured result metadata.
+
+What it offers to integrators:
+
+- asynchronous-style trigger-and-poll contract (`POST /jobs/...` then `GET /jobs/{id}`),
+- deterministic audit trail for every run (sequence-ordered logs),
+- standardized outcome object for automation and dashboards.
+
+What it receives:
+
+- job type selector and optional runtime config reference,
+- filesystem inputs resolved via RuntimeConfig and settings defaults.
+
+Data ownership:
+
+- LexwareAPI is source-of-truth for run state and logs; external projects should treat job records as authoritative execution evidence.
+
+### 2) Invoice creation service (CSV → Lexoffice invoices)
+
+`createMonthlyCMInvoices(...)` reads sold-orders CSV rows, derives country/tax/contact context, and posts invoices to Lexoffice.
+
+Inputs:
+
+- sold-orders CSV (from configured data path or uploaded runtime file),
+- Lexoffice API token, runtime flags (debug/finalization, OSS behavior).
+
+Outputs/side effects:
+
+- invoices in Lexoffice,
+- pending order references persisted locally for later payout matching,
+- job logs including preflight diagnostics (file exists, size, row count).
+
+Integration implications:
+
+- producing systems only need to generate the expected CSV export; LexwareAPI owns tax/contact branching and invoice payload assembly.
+
+### 3) Invoice assignment and payout matching service
+
+`assignMonthlyCMInvoices(...)` correlates transaction-summary CSV records with Lexoffice voucher data:
+
+- looks up open vouchers,
+- matches order references to invoice line-item descriptions,
+- stores unresolved/matched names and orders,
+- groups withdrawal events into `WithdrawalMatchBucket` entities.
+
+This provides a persistent reconciliation layer so payout events can be traced to invoice/customer groupings without duplicating matching logic elsewhere.
+
+### 4) Tax refresh service
+
+`fetchAllTaxRates(...)` concurrently refreshes supported country rates from Vatsense and stores them in `TaxRate`.
+
+Key characteristics:
+
+- parallel fetch across supported countries,
+- progress callbacks surfaced into job logs,
+- strict failure mode can fail the job when any country refresh fails,
+- fallback behavior in single-country fetch returns default rate (`19`) when non-strict errors occur.
+
+### 5) File upload and validation service
+
+Upload workflow is split into:
+
+- **local validation** (`/upload/validate/`) for type, size, duplicates, and optional strict-PDF mode,
+- **Lexoffice upload execution** (`/upload/`) with per-file success/failure normalization.
+
+This is the primary interface for projects that need document ingestion into Lexoffice without implementing multipart upload handling themselves.
+
+## Operations & Lifecycle
+
+### Runtime behavior
+
+- **Startup dependencies:** requires valid Django runtime plus environment credentials for external APIs when corresponding jobs are invoked. Service can boot without those credentials, but affected workflows will fail/fallback at execution time.
+- **Startup ordering:** no hard dependency on other internal ecosystem services at boot; only external API reachability and input files are required when jobs run.
+- **Health definition:** `/health/` returning `{"status":"ok"}` indicates process-level availability.
+- **Readiness vs liveness:** current implementation effectively uses one lightweight health endpoint (liveness-like). Readiness for specific workflows is input/credential dependent and validated lazily in job preflight.
+- **Shutdown behavior:** no explicit graceful worker queue exists; each HTTP-triggered job runs synchronously in-process, so abrupt container stop may interrupt active runs.
+- **Volume mounts:** `./example_data:/data` and `./:/app` are mounted in compose; media files persist under `/app/media`. Integrators should avoid concurrent writes to the same input files during active jobs.
+
+### Failure behavior
+
+- **Unavailability:** if LexwareAPI is down, no bookkeeping job triggers or status polling can occur.
+- **Retry/backoff expectations for consumers:** clients should treat `POST /jobs/...` as non-idempotent triggers and implement conservative retry (retry only on transport failure before response; avoid blind retries after unknown state).
+- **Idempotency considerations:** invoice creation/assignment can produce external side effects; repeated triggers may duplicate work if upstream files are unchanged. Use job status checks and operational controls before re-running.
+- **Partial failures:** upload API supports partial success with per-file failure entries; tax refresh aggregates per-country failures and can fail as a batch when strict mode is enabled.
+- **Decoupled/local operation:** service supports standalone local execution with mounted sample data and direct management command, enabling integration testing without full ecosystem coupling.
+
+### Scaling behavior
+
+- **State profile:** stateful (local SQLite + media/data files + mutable job tables).
+- **Horizontal scaling constraints:** not safe for naive multi-replica scaling because replicas would not share SQLite/job state and may race on shared files or duplicate side effects against Lexoffice.
+- **Known bottlenecks:** in-process job execution ties throughput to web worker capacity; network latency to Lexoffice/Vatsense and CSV size directly influence response/job duration.
+
+### Replacement & evolution
+
+- **Stability guarantees to preserve:** job endpoint names, serialized `Job` shape (`id`, `job_type`, `status`, `result`, `logs`), and upload error envelope should remain stable for cross-project automation.
+- **Allowed evolution:** internal model schema and service implementation details can evolve if HTTP contracts and semantics remain backward compatible.
+- **Deprecation strategy:** maintain parallel legacy route prefix (`/api/lexware/`) while migrating consumers to canonical routes; announce removals with staged overlap and documented cutover windows.
+- **Breaking changes:** should be introduced via explicit versioned endpoint strategy or coordinated ecosystem release notes, since this service acts as a central accounting integration point.
 
 # Shop Front Context
 
