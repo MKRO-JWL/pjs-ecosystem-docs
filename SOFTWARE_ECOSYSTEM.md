@@ -278,38 +278,40 @@ Centralising catalogue management in DBUpdater reduces duplicated logic across t
 ## Project Summary
 InventoryManager<span style="color:yellow"> (IM) </span>is the central<span style="color:red"> _Inventory Management System_
 (**IMS**)</span> that holds data about the stock while synchronising product 
-metadata with the [DBU](#dbupdater-context). 
-It exposes REST endpoints for CRUD operations on 
-inventory, (TODO GO AND CHECK WHY THE HECK I NEED CELERY FOR?!)
+metadata with [DBU](#dbupdater-context). 
+It exposes REST endpoints for CRUD operations only for [IMApp]() and other endpoints for other applications,
 provides Celery tasks for background processing and offers chart 
 visualisations, data tracking and more through the Analysis app.
 
 ```mermaid
-flowchart TD
+flowchart LR
     subgraph InventoryManager
         api[API]
         im-web --> |ORM| DB
-        celery[Celery Worker] --logs--> net
-        net[Docker Network]
+        im-web --> |tasks| celery
+        rabbit[RabbitMQ] <--> celery
+        celery[Celery Worker]
+        api -->|data| im-web
         DB[(PostgreSQL)]
     end
-    IMApp -.->|access| api
-    api -->|data| im-web
-    VPN -.-> im-web
-    dbu[DBUpdater]
-    is[InfrastructureStack]
-    mail[Mailbot]
-    im-web -->|metrics,logs,secrets| net
-    net <-.-> |metrics,logs,secrets| is
-    net <-.-> |data| dbu
-    mail -.->|data| net
+    
+    subgraph Docker Network
+        dbu[[DBUpdater]]
+        is[[InfrastructureStack]]
+        Lex[[LAPI]]
+        IMApp[[IMApp]] -.->|CRUD| api
+        Lex -.->|data| api
+        is --> |observes| InventoryManager
+        dbu <-.-> |data| api
+    end
+    VPN((VPN)) -.-> |access| im-web
+
 ```
 
 ## Purpose
 InventoryManager exists to provide the ecosystem’s **operational inventory ledger**: 
 the place where stock state is clearly documented and utilized for business decisions. 
-Without this service, DBUpdater would have no specialised source of centralized data
-that cannot be crawled on the websites of suppliers.
+
 
 It also serves regulatory procedures like stock taking and data for planning upcoming
 expenses or money allocation.
