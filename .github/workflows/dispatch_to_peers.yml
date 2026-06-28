@@ -20,13 +20,8 @@ jobs:
         run: |
           echo "REPOS<<EOF" >> $GITHUB_OUTPUT
           cat <<'REPOLIST' >> $GITHUB_OUTPUT
-          MKRO-JWL/InfrastructureStack
-          MKRO-JWL/DBUpdater
-          MKRO-JWL/InventoryManager
-          MKRO-JWL/MailBot
-          MKRO-JWL/PJsShopFront          
-          MKRO-JWL/PJsShop
-          MKRO-JWL/LexwareAPI
+          MKRO-JWL/pjscollectables-platform
+          MKRO-JWL/PJsShopFront
           REPOLIST
           echo "EOF" >> $GITHUB_OUTPUT
 
