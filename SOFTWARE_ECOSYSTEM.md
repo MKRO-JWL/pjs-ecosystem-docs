@@ -473,7 +473,7 @@ PJsShopFront consumes the [pjscollectables-platform](#pjscollectables-platform-c
 
 | Interface (platform `shop`) | Location | Auth | Notes | Client-facing errors |
 | --- | --- | --- | --- | --- |
-| Session bootstrap | `GET/POST /api/session/` | None | `sessionid`, `csrftoken`, `is_authenticated`. | 403 (CSRF), 5xx |
+| Session bootstrap | `GET/POST /api/session/` | None | `csrftoken`, `is_authenticated`; sets the HttpOnly `sessionid` cookie (not echoed in the body). | 403 (CSRF), 5xx |
 | Categories | `GET /api/categories/`, `/api/categories/nav/` | None | Filter by `parent`/`slug`/`name`/`is_active`; nav tree. | 404/5xx |
 | Products | `GET /api/products/`, `/api/products/facets/` | None | Pagination + `category__name` filter; facets. | 404/5xx |
 | Cart | `GET/POST /api/cart/`, `/api/cart/add/`, `/api/cart/remove/`, `/api/cart/update/` | Session + CSRF | Cart payload with items/totals. | 401/403, 5xx |
