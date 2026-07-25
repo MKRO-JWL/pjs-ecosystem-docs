@@ -644,29 +644,36 @@ Every phase exists to reduce a *different* category of engineering risk — so t
 | Phase | The risk it exists to reduce |
 | --- | --- |
 | Mission Definition | requirement ambiguity |
+| Option Landscape | committing to a direction before its alternatives are visible |
 | Owner Decisions | assumption-driven development |
 | Repository Analysis | hallucinated architecture |
 | Architecture Model | designing against a misunderstood subsystem |
 | Design | implementation mistakes |
 | Planning | uncontrolled changes |
+| Implementation | changes beyond the approved plan (scope creep) |
 | Verification | regression risk |
 | Architectural Audit | long-term entropy |
 | Knowledge Capture | loss of engineering intent for future contributors and AI systems |
+
+*(one row per phase, in the order of the §3 state machine)*
 
 ## 3. Session State Machine
 
 Work proceeds through explicit, ordered states — an LLM behaves far more reliably against an explicit state machine than against a prose checklist. The legal states are:
 
 1. Mission Definition
-2. Owner Decision Discovery
-3. Repository Analysis
-4. Architecture Model
-5. Engineering Design
-6. Implementation Planning
-7. Implementation
-8. Verification
-9. Architectural Audit
-10. Knowledge Capture
+2. Option Landscape
+3. Owner Decision Discovery
+4. Repository Analysis
+5. Architecture Model
+6. Engineering Design
+7. Implementation Planning
+8. Implementation
+9. Verification
+10. Architectural Audit
+11. Knowledge Capture
+
+*This numbered list is the single source of truth for the phases. Every other enumeration in this document — the risk table in §2, the per-state rules in §4, the workflow diagram and the Session-Protocol template — derives from it and must match it.*
 
 Transition rules:
 
@@ -674,6 +681,7 @@ Transition rules:
 - You may never implement before Design.
 - You may never design before understanding the repository.
 - You may never design before the Architecture Model has been built and approved.
+- You may never resolve an Owner Decision before the Option Landscape that frames it has been presented.
 - You may never verify work that has not been implemented.
 - If verification fails, return to **Design** — not to further implementation.
 - Continue only after the current state has been approved.
@@ -682,19 +690,21 @@ Transition rules:
 
 **Mission** — define the Goal, the Success Criteria, what is Out of Scope, and the Constraints.
 
+**Option Landscape** — before any owner decision, lay out the *full* solution space: every viable approach to the mission, not only the preferred one. For each, state what it is, its trade-offs, and its cost / blast-radius; present the differences as a **comparison table** and end with an explicit **recommendation** and its reasoning. The purpose is comprehension — the owner sees the whole space and shapes the direction before it is locked. Score options where a number genuinely separates them; a metric that does not vary between options is noise — omit it. This is distinct from **Design**: the Option Landscape chooses a *direction* at the problem level, before the Architecture Model; Design chooses an *implementation* at the solution level, after it.
+
 **Owner Decisions** — only ask questions whose answers *permanently affect architecture*. Never ask preference questions. Record every answer as an Owner Decision Record — in this ecosystem that means **inline in the code the decision governs** (the decision-log convention), cross-referenced from the task's Issue.
 
 **Repository Analysis** — read every relevant file completely. Map dependencies. Identify patterns. Identify risks. Never assume architecture.
 
-**Architecture Model** — before designing, produce a concise model of the relevant subsystem and get it approved. It states the **components**, their **responsibilities**, the **dependencies** and **data flow** between them, the **current constraints**, the **relevant owner decisions**, and the **known risks**. Only once this model is approved do you begin designing. Forcing demonstrated understanding *before* proposing changes is what prevents hallucinated implementations.
+**Architecture Model** — before designing, produce a concise model of the relevant subsystem and get it approved. It states the **components**, their **responsibilities**, the **dependencies** and **data flow** between them, the **current constraints**, the **relevant owner decisions**, and the **known risks**. Only once this model is approved do you begin designing. Forcing demonstrated understanding *before* proposing changes is what prevents hallucinated implementations. State the **known risks as a scored table — likelihood × impact** — rather than prose, so the largest risks are unambiguous.
 
-**Design** — generate alternatives. Compare tradeoffs. Explain the recommendation. Estimate risks. Identify breaking changes.
+**Design** — generate alternatives. Compare tradeoffs. Explain the recommendation. Estimate risks. Identify breaking changes. Unlike the Option Landscape (which surveys *directions* before the Architecture Model), Design works *within* the chosen direction to settle the implementation — its alternatives are competing implementations, not competing goals.
 
 **Planning** — produce an ordered implementation plan. Each step should be independently verifiable.
 
 **Implementation** — only implement approved plan items. Never introduce unrelated refactors. Never silently change APIs. Keep changes minimal.
 
-**Verification** — compile. Run tests. Review logs. Verify contracts. Verify compatibility. Verify edge cases.
+**Verification** — compile. Run tests. Review logs. Verify contracts. Verify compatibility. Verify edge cases. Report the outcome as a **metrics line** — tests run / passed, coverage or key counts — not only prose, so the result reads at a glance.
 
 **Audit** — search for duplication, architectural drift, dead code, tight coupling, SOLID violations, unnecessary abstractions, complexity increase, owner-rule violations, and future maintenance risks.
 
@@ -714,6 +724,7 @@ Transition rules:
 - Always keep implementations observable.
 - Always favor composition over duplication.
 - Always optimize for future maintainability over implementation speed.
+- Prefer a metric to a paragraph when a number genuinely varies — but a metric that does not vary is noise; omit it.
 
 ## 6. Interaction Rules
 
@@ -750,7 +761,8 @@ Do not treat the session as a single linear pass (`Goal → Questions → Design
 
 ```mermaid
 flowchart TD
-    M[Mission] --> OD[Owner Decisions]
+    M[Mission] --> OL[Option Landscape]
+    OL --> OD[Owner Decisions]
     OD --> RA[Repository Analysis]
     RA --> AM[Architecture Model]
     AM --> D[Design]
@@ -770,7 +782,7 @@ This mirrors the iterative development used by mature engineering teams: every t
 
 The Constitution above is **stable** and shared by every session. The **Session Protocol** is the short, task-specific companion that governs one unit of work — its mission, owner decisions, repository understanding, plan and progress. To keep the codebase free of accumulating session files, **the Session Protocol lives in that task's GitHub Issue**, not in the repo:
 
-- **One task = one GitHub Issue**, opened from the [`session-protocol` issue template](.github/ISSUE_TEMPLATE/session-protocol.md), which pre-structures the Issue with the phases above (Mission → Repository Understanding → Architecture Model → Confidence Gate → Design → Plan → Progress → Verification → Audit → Knowledge Capture).
+- **One task = one GitHub Issue**, opened from the [`session-protocol` issue template](.github/ISSUE_TEMPLATE/session-protocol.md), which pre-structures the Issue with the phases of the [Session State Machine](#3-session-state-machine) (plus its working-record companions, the Confidence Gate and a Progress log).
 - **Owner decisions** are recorded **inline in the code they govern** (the decision-log convention) and cross-referenced from the Issue — the code, not the Issue, is their canonical home.
 - The engineering cycle for a task **ends by closing its Issue**, after Knowledge Capture. An open Issue is an in-flight cycle; a closed Issue is a completed, audited, captured one.
 - GitHub Issues are the backlog **and** the working record; they supersede the former `TODO.md`.
