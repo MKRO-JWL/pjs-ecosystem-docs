@@ -299,7 +299,7 @@ The platform has **no in-ecosystem upstream** — PJsShopFront and IMApp consume
 
 - **PayPal** — OAuth + order create/capture + webhook (`api-m.sandbox.paypal.com` or live per `PAYPAL_ENV`). On outage, checkout returns `502/503` and the cart is preserved.
 - **Lexoffice** (`api.lexware.io`) — invoice/contact/voucher/file-upload operations (invoicing). Empty key disables the feature (fail-soft); on outage, affected jobs fail or report per-file failures.
-- **VATSense** (`api.vatsense.com`) — EU VAT-rate refresh (invoicing). Non-strict mode falls back to a default rate (`19`); strict mode fails the job.
+- **VATSense** (`api.vatsense.com`) — EU VAT-rate refresh (invoicing). No voucher path falls back to a default rate: an unavailable rate refuses the invoice, because a German rate on a French sale is a wrong tax document that looks like a success.
 - **GMX mailbox** — **IMAP ingress** (inbox polls `imap.gmx.net:993` for order-confirmation emails) and **SMTP egress** (invoicing/shop send invoice PDFs, password-reset and supplier-reorder mail). With no mail password the console email backend is used (safe in dev/CI); IMAP unreachable simply means the next poll finds nothing.
 - **Cloudflare R2** — product/media object storage via django-storages when all four `R2_*` vars are set; otherwise local `FileSystemStorage` (valid for dev/CI/tests).
 - **Wholesaler (Blackfire)** — catalogue/GPSR spreadsheets ingested by `catalog` management commands, and order-confirmation emails ingested by `inbox`. Operator/scheduled inputs; if absent, imports simply don't run.
@@ -373,7 +373,8 @@ The **storefront backend** and the only module that authenticates customers, per
 The **bookkeeping automation bridge**: it turns sold-order/transaction CSV inputs into Lexoffice invoices, assigns payouts back to invoice references, refreshes EU tax rates from VATSense, and handles invoice-document upload. It **owns** `Job`/`JobLog` run history, the `TaxRate` cache, pending invoice/order matching entities, and withdrawal-match buckets. Core services (`invoicing/services/`):
 
 - **`jobs`** — the control plane: `run_job(...)` persists a `Job`, runs the workflow, captures stdout/stderr into ordered `JobLog` rows, and writes a structured result (trigger-and-poll via `POST /api/invoicing/jobs/...` then `GET /api/invoicing/jobs/{id}`).
-- **`lexware`** — invoice creation (sold-orders CSV → Lexoffice invoices, with country/tax/contact branching and OSS behavior), invoice assignment / payout matching (transaction-summary CSV ↔ Lexoffice vouchers), and tax refresh (`fetchAllTaxRates` → `TaxRate`, strict vs fail-soft default `19`).
+- **`vat`** — the single answer to "how is this sale taxed?" for every voucher path: a destination country code (never a country name) plus the buyer's VAT id maps to one of four treatments, and a destination it cannot classify is refused rather than guessed at.
+- **`lexware`** — invoice creation (sold-orders CSV → Lexoffice invoices; it builds the documents and resolves contacts, while `vat` decides the tax), invoice assignment / payout matching (transaction-summary CSV ↔ Lexoffice vouchers), and tax refresh (`fetchAllTaxRates` → `TaxRate`).
 - **`upload`** — local validation (type/size/duplicates/strict-PDF) + Lexoffice upload execution (per-file success/failure normalization).
 - **`orders`**, **`mailer`** — sold-order handoff (forwards generated invoice PDFs into `inventory.services.receive_files` in-process) and SMTP delivery of invoice/proforma PDFs.
 - **sales import** — the **sold-articles → inventory** job (`TYPE_SALES_IMPORT`) records Cardmarket sales (FIFO stock-out) from the per-article "Sold Articles" export uploaded to `RuntimeConfig.sold_articles_csv`, via the in-process seam `inventory.services.import_sold_articles`.
@@ -449,7 +450,7 @@ One gitignored root `.env` (template `.env.example`). Datastore/Grafana credenti
 | `DEFAULT_FROM_EMAIL` | email | `pjs-collectables@gmx.net` | no |
 | `IMAP_HOST` / `IMAP_PORT` / `IMAP_USE_SSL` / `IMAP_MAILBOX` | string/int/bool | `imap.gmx.net` / `993` / `True` / `INBOX` | no |
 | `IMAP_USER` / `IMAP_PASSWORD` | string | default to `GMX_MAIL`/`GMX_PASSWORD` | **yes** |
-| `IS_FINAL` / `IS_ACTIVE_OSS` / `IS_NEW_TAX` / `IS_CREATING` | bool | invoicing job toggles | no |
+| `IS_FINAL` / `IS_NEW_TAX` / `IS_CREATING` | bool | invoicing job toggles | no |
 | `R2_BUCKET` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_ENDPOINT_URL` | string | — (all four set → R2; else local FS) | **yes** |
 | `R2_CUSTOM_DOMAIN` / `R2_REGION` | string | — / `auto` | no |
 | `CLOUDFLARE_DNS_API_TOKEN` / `LETSENCRYPT_EMAIL` | string | — (prod overlay, **required**) | **yes** |
