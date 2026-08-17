@@ -82,6 +82,7 @@ flowchart LR
 
 ### Contents
 - [Infrastructure & Distribution](#infrastructure--distribution)
+  - [Legal & regulatory standards](#legal--regulatory-standards)
 - [pjscollectables-platform](#pjscollectables-platform-context)
   - [catalog (former DBUpdater)](#catalog-former-dbupdater)
   - [inventory (former InventoryManager)](#inventory-former-inventorymanager)
@@ -149,6 +150,29 @@ Every repository is built and audited against shared standards rather than ad-ho
 - **Owner design decisions** — deliberate rulings about how the system is built, above all on **data pipelines and data structure**, are recorded **inline in the code they govern** (never in a central decision log, which drifts away from what it describes). They do two jobs at once. They are *documentation*: the reason the code has the shape it has, which the code alone cannot show. And they are **tripwires**: a change that would cross one is meant to notice it and stop, so the decision gets re-ruled deliberately rather than quietly re-implemented. This is the human counterpart to import-linter's mechanical gate — it exists because a later iteration, seeing only the local picture, will otherwise omit or delete code it mistakes for dead weight when that code was load-bearing for reasons visible only from the whole pipeline. The intent is to **enforce consistent building on top of the codebase** instead of shortsighted removal. Such decisions may be criticised freely, and must never be changed, bypassed or reverted without the owner's explicit consent; where one conflicts with a new instruction, the conflict is surfaced for the owner to rule on.
 
 These standards are referenced here, not duplicated per project; each project section's *Operations & Lifecycle* segment documents the concrete controls it implements. Where a section summarises an owner design decision, the code file it cites holds the full text — that inline note, not this document, is the authority.
+
+### Legal & regulatory standards
+
+> Not legal advice. This subsection records which laws the platform is built against and how each is met. Legal determinations belong to the owner and counsel; engineering keeps this list true. **Add a jurisdiction here when the shop starts selling into it.**
+
+**Where we sell.** Germany is the home market. The EU is served under OSS VAT, and shipping is possible only to a defined zone — an undefined destination is refused at checkout, so the reachable market is always an explicit list rather than an accident.
+
+| Jurisdiction | Law | What it requires of us | Where it is met |
+| --- | --- | --- | --- |
+| EU / DE | **DSGVO / GDPR** | lawful basis, minimisation, storage limits, data-subject rights | per-model declarations → [`docs/PRIVACY_REGISTER.md`](docs/PRIVACY_REGISTER.md); rights endpoints open in #14 |
+| DE | **TDDDG §25** (ex-TTDSG) | consent before any non-essential storage on the device | no trackers ship today; consent banner is #14 |
+| DE | **§147 AO / GoBD** | invoices and booking records kept ~10 years | `Retention.statutory(...)`, swept never, deletion refused by design |
+| DE | **§14 UStG** | issue and keep invoices | `invoicing`, lexoffice as the document store |
+| EU | **GPSR (EU) 2023/988** | manufacturer or EU responsible person identifiable | `catalog.Manufacturer` / `catalog.Importer`, published |
+| EU | **OSS VAT** | destination-country VAT, one return | `invoicing/services/vat.py` — the single VAT authority |
+| EU | **UWG / GDPR Art. 6(1)(a)** | no marketing without prior opt-in | consent defaults are `False`, enforced by a contract test |
+| UK | **UK GDPR + DPA 2018, PECR** | equivalent duties post-Brexit | same mechanisms; no UK-specific gap identified |
+| UK | **£135 import VAT threshold** | VAT treatment differs above/below | open — issue #37 |
+| CH | **revFADP (nDSG)** | GDPR-equivalent duties if selling into Switzerland | only if a Swiss shipping zone is opened |
+
+**Art. 32 — technical and organisational measures.** Encryption in transit (TLS via Cloudflare full-strict, HSTS with preload). Session and CSRF cookies are `Secure`, `SameSite=Lax`, session cookies `HttpOnly` with a one-hour lifetime. Exactly one privileged account exists, and every internal surface is VPN-only; the anonymous HTTP surface is pinned by a contract test, so a new public endpoint cannot appear unnoticed. Login is rate-limited and lockout keys on the username rather than the IP. Backups are encrypted and restore-tested. Personal data is declared per model and swept on a nightly schedule; an undeclared model fails the build.
+
+**Art. 35 — data protection impact assessment: not required.** The shop sells collectibles to consumers. It runs no profiling or automated decision-making, holds no special-category or criminal-offence data, does not monitor a publicly accessible area, and processes a small volume for a single small merchant — so none of the Art. 35(3) triggers or the German supervisory authorities' mandatory-DPIA list apply. This determination is recorded rather than assumed, and is to be revisited if analytics, scoring or profiling is ever introduced (owner decision D-4 remains open) — and confirmed by counsel, not by this document.
 
 ---
 
@@ -399,7 +423,7 @@ ops **owns** the control marker and the health/status surface; it holds no busin
 
 ### core
 
-The shared base every domain app builds on: cross-cutting models/utils, the `services` shared helpers, request `middleware`, correlation-ID tracing (`core/trace.py`), and image handling (`core/images.py`). Per the import-linter contract, **core may not import any domain app** — dependencies point inward to core, never outward.
+The shared base every domain app builds on: cross-cutting models/utils, the `services` shared helpers, request `middleware`, correlation-ID tracing (`core/trace.py`), and image handling (`core/images.py`). It also holds `core/privacy/` — the Art. 25 vocabulary every model declares its personal data in, the registry that derives the record of processing from those declarations, and the retention sweeps that execute the declared windows; core is the natural home because it is the one module every app may import and none of them may be imported by. Per the import-linter contract, **core may not import any domain app** — dependencies point inward to core, never outward.
 
 ## Operations & Lifecycle
 
@@ -757,6 +781,8 @@ Blocking Questions
 ```
 
 Implementation is only allowed after all blocking questions are resolved or explicitly waived.
+
+The gate also carries the **Privacy by Design questions (Art. 25)**: whether the task touches personal data and, if so, its category, legal basis, retention window and privacy-preserving default. They live here because Art. 25 is about defaults chosen *at design time* — answering them before implementation is free, while answering them afterwards means migrating data that should never have been collected. They are enforced, not merely asked: an undeclared model fails `manage.py check`, and `ops/tests/test_privacy_contract.py` pins the rest. The resulting record of processing is generated from the code at [`docs/PRIVACY_REGISTER.md`](docs/PRIVACY_REGISTER.md).
 
 ## The Recursive Workflow (every task is its own cycle)
 
