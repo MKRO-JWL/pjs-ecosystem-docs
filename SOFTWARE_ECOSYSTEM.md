@@ -569,7 +569,7 @@ Global cart state in `src/services/globals.js` (reactive Vue state) with `fetchC
 ## Operations & Lifecycle
 
 ### Runtime behavior
-- **Startup dependencies & ordering:** needs the platform `shop` API reachable at the configured base/proxy before dynamic data loads; static assets/routing load without it but catalog/cart/profile data will fail. Ships its own compose stack on the edge-only `pjs-edge` bridge; its image tag lives in this repo's `.env`, not the platform's.
+- **Startup dependencies & ordering:** needs the platform `shop` API reachable at the configured base/proxy before dynamic data loads; static assets/routing load without it but catalog/cart/profile data will fail. Public navigation deliberately fails **open** when the session bootstrap fails and only routes marked as requiring auth redirect to `/login`, so a backend outage degrades data without making the catalogue or the legal pages unreachable. Ships its own compose stack on the edge-only `pjs-edge` bridge; its image tag lives in this repo's `.env`, not the platform's.
 - **Shutdown & cleanup:** stateless — stopping the Vite dev server or static host terminates it with no cleanup.
 - **Healthy / readiness vs liveness:** liveness = the static bundle is served; readiness = the platform reachable and `/api/session/` returns 200. nginx shows the maintenance page when this stack is down/absent.
 - **Isolated volume mounts:** none; avoid mounting `node_modules`/build output into shared volumes.
