@@ -762,7 +762,7 @@ The labels are not filing metadata. **Severity** decides how much process the ta
 
 **Verification** — compile. Run tests. Review logs. Verify contracts. Verify compatibility. Verify edge cases. Report the outcome as a **metrics line** — tests run / passed, coverage or key counts — not only prose, so the result reads at a glance.
 
-**Audit** — **spawn at least two workers**, and more as complexity warrants. One sweeps for duplication, architectural drift, dead code, tight coupling, SOLID violations, unnecessary abstractions, rising complexity, owner-rule violations and future maintenance risk. The others work the [Audit Dimensions](#the-audit-dimensions), split between them. Parallel readers are the point: the author of a change is the worst-placed person to see what they just built, and a single reviewer tends to re-walk the path the implementation already took. **A finding outside the current Issue's scope is neither discarded nor quietly fixed — report it and propose it as its own Issue.** **The audit is never where you economise:** it runs at full strength on the strongest available model, however cheaply the planning states were run. Planning committees are an insurance policy against an answer being unsettled; the audit is the one control that has actually fired — in #76 cycle 2 it caught a change that was green, red-first-tested and still a net regression, and sent it back to Design.
+**Audit** — **spawn at least two workers**, and more as complexity warrants. One sweeps for duplication, architectural drift, dead code, tight coupling, SOLID violations, unnecessary abstractions, rising complexity, owner-rule violations and future maintenance risk. The others work the [Audit Dimensions](#the-audit-dimensions), split between them. Parallel readers are the point: the author of a change is the worst-placed person to see what they just built, and a single reviewer tends to re-walk the path the implementation already took. **A finding outside the current Issue's scope is neither discarded nor quietly fixed — attach it to the open Issue for its root cause, and propose a new Issue only when no open Issue shares that cause.** Name the cause either way. A backlog of symptoms grows faster than any cycle can work it; a backlog of causes shrinks each time one is fixed. **The audit is never where you economise:** it runs at full strength on the strongest available model, however cheaply the planning states were run. Planning committees are an insurance policy against an answer being unsettled; the audit is the one control that has actually fired — in #76 cycle 2 it caught a change that was green, red-first-tested and still a net regression, and sent it back to Design.
 
 
 **Knowledge Capture** — summarize decisions. Document tradeoffs. Record architectural rationale. Update owner decision records.
@@ -859,6 +859,16 @@ Consequence
 ```
 
 **Never present a committee's output as consensus it did not reach.** If two workers agree and one dissents, the dissent is reported with its reasoning — a lone objection that turns out to be right is the entire reason for running three.
+
+## When a cycle stops
+
+An audit asked to find defects always finds some — two passes over the same code rarely land in the same place, which is the premise committees are built on. So a cycle cannot end on "the audit found nothing". It ends on the rules below, and the owner can always order another round on purpose.
+
+- **A merge blocker is a regression or an irreversible step, nothing else.** A finding blocks the merge only if the change makes production worse than `main`, or if merging does something that cannot be taken back — publishes, deletes, migrates data. Everything else is fixed forward and does not hold a merge that makes production better. Precedent: #74/#75/#77 were recorded as blocking the #14 merge on 2026-08-26 and sat untouched for sixteen days while the branch took on three newer findings — and the two defects that branch repairs (#88, #95) stayed in production the whole time.
+- **One audit round, then only its delta.** A second round audits what the first round's rework changed, never the whole change again.
+- **A mechanical exit beats a reading one.** Where an oracle exists — the test suite, a mutation run's list of surviving mutants, a generated artifact's currency check — the audit reviews the oracle's output, and the cycle exits when that output is clean. Reading for novelty has no end.
+- **No audit of code without a production caller.** A mechanism nothing in production calls is not audited beyond its interface until its first consumer is wired; findings against it attach to the Issue that wires it.
+- **Oldest blocker first.** A new finding never jumps ahead of an older recorded blocker of the same change.
 
 ## The Audit Dimensions
 
