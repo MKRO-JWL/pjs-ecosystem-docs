@@ -160,7 +160,7 @@ These standards are referenced here, not duplicated per project; each project se
 | Jurisdiction | Law | What it requires of us | Where it is met |
 | --- | --- | --- | --- |
 | EU / DE | **DSGVO / GDPR** | lawful basis, minimisation, storage limits, data-subject rights | per-model declarations → [`docs/PRIVACY_REGISTER.md`](docs/PRIVACY_REGISTER.md); rights endpoints open in #14 |
-| DE | **TDDDG §25** (ex-TTDSG) | consent before any non-essential storage on the device | no trackers ship today; consent banner is #14 |
+| DE | **TDDDG §25** (ex-TTDSG) | consent before any non-essential storage on the device | no consent required: everything stored is strictly necessary or a setting the visitor chose — enforced by a storefront build gate, not asserted |
 | DE | **§147 AO / GoBD** | invoices and booking records kept ~10 years | `Retention.statutory(...)`, swept never, deletion refused by design |
 | DE | **§14 UStG** | issue and keep invoices | `invoicing`, lexoffice as the document store |
 | EU | **GPSR (EU) 2023/988** | manufacturer or EU responsible person identifiable | `catalog.Manufacturer` / `catalog.Importer`, published |
@@ -169,6 +169,8 @@ These standards are referenced here, not duplicated per project; each project se
 | UK | **UK GDPR + DPA 2018, PECR** | equivalent duties post-Brexit | same mechanisms; no UK-specific gap identified |
 | UK | **£135 import VAT threshold** | VAT treatment differs above/below | open — issue #37 |
 | CH | **revFADP (nDSG)** | GDPR-equivalent duties if selling into Switzerland | only if a Swiss shipping zone is opened |
+
+**TDDDG §25 — consent not required.** Every item this shop stores on a device is either strictly necessary for the service the visitor asked for (the session and CSRF cookies) or a setting the visitor chose themselves (language, a menu cache, a reload guard). No analytics, advertising or tracking of any kind ships, and the one third-party script — PayPal's payment module — loads only after the customer presses a button to pay that way, so it is never fetched for someone who did not request it. There is therefore nothing to obtain consent for, and a banner would ask a question with no answer. Like the DPIA determination below, this is recorded rather than assumed, and the storefront build *checks* part of it: the build fails if a known tracker name or a URL to an undeclared third-party host appears in the shipped `.js`/`.vue` source, or if `Checkout.vue` loses its `activatePayPal` gate or calls `loadPayPal(` in its mount hook. Those checks read source text, not runtime behaviour — they skip `index.html`, and two regressions that load PayPal unasked still pass them (#75, #83) — so they make the determination harder to break unnoticed, not impossible. Revisit it the moment any of those checks has to be relaxed.
 
 **Art. 32 — technical and organisational measures.** Encryption in transit (TLS via Cloudflare full-strict, HSTS with preload). Session and CSRF cookies are `Secure`, `SameSite=Lax`, session cookies `HttpOnly` with a one-hour lifetime. Exactly one privileged account exists, and every internal surface is VPN-only; the anonymous HTTP surface is pinned by a contract test, so a new public endpoint cannot appear unnoticed. Login is rate-limited and lockout keys on the username rather than the IP. Backups are encrypted and restore-tested. Personal data is declared per model and swept on a nightly schedule; an undeclared model fails the build.
 
@@ -688,6 +690,8 @@ Every phase exists to reduce a *different* category of engineering risk — so t
 
 Work proceeds through explicit, ordered states — an LLM behaves far more reliably against an explicit state machine than against a prose checklist. The legal states are:
 
+**Planning** — states 1–7, closing at the [Confidence Gate](#the-confidence-gate-a-forcing-function-against-premature-coding):
+
 1. Mission Definition
 2. Option Landscape
 3. Owner Decision Discovery
@@ -695,10 +699,19 @@ Work proceeds through explicit, ordered states — an LLM behaves far more relia
 5. Architecture Model
 6. Engineering Design
 7. Implementation Planning
+
+**Implementation** — states 8–11, everything after the gate:
+
 8. Implementation
 9. Verification
 10. Architectural Audit
 11. Knowledge Capture
+
+The split is not decorative. Planning decides *what* is built and can be redone for the
+cost of a conversation; implementation decides *how well* and is redone for the cost of
+the work. A wrong decision in states 1–7 is paid for in every state after it, which is
+why the heavier machinery — committees, the Option Landscape, the Architecture Model, the
+gate itself — all sits on the planning side.
 
 *This numbered list is the single source of truth for the phases. Every other enumeration in this document — the risk table in §2, the per-state rules in §4, the workflow diagram and the Session-Protocol template — derives from it and must match it.*
 
@@ -715,7 +728,23 @@ Transition rules:
 
 ## 4. Rules for Every State
 
-**Mission** — define the Goal, the Success Criteria, what is Out of Scope, and the Constraints.
+**Mission** — define the Goal, the Success Criteria, what is Out of Scope, and the Constraints. **Label the Issue and the brief** with a concern, a severity and a type, so the mission takes its place in the backlog rather than floating free of it. Publish it in this shape:
+
+```text
+Mission Brief
+
+Goal              ...
+Success Criteria  ...
+Out of Scope      ...
+Constraints       ...
+
+Labels
+  Concern         ...
+  Severity        ...
+  Type            ...
+```
+
+The labels are not filing metadata. **Severity** decides how much process the task earns (see [Committees](#committees-independent-passes-on-the-same-question)), and **concern** decides which [Audit Dimensions](#the-audit-dimensions) the audit must cover. Both are read later in the cycle, so a careless label is a decision, not a detail.
 
 **Option Landscape** — before any owner decision, lay out the *full* solution space: every viable approach to the mission, not only the preferred one. For each, state what it is, its trade-offs, and its cost / blast-radius; present the differences as a **comparison table** and end with an explicit **recommendation** and its reasoning. The purpose is comprehension — the owner sees the whole space and shapes the direction before it is locked. Score options where a number genuinely separates them; a metric that does not vary between options is noise — omit it. This is distinct from **Design**: the Option Landscape chooses a *direction* at the problem level, before the Architecture Model; Design chooses an *implementation* at the solution level, after it.
 
@@ -733,7 +762,8 @@ Transition rules:
 
 **Verification** — compile. Run tests. Review logs. Verify contracts. Verify compatibility. Verify edge cases. Report the outcome as a **metrics line** — tests run / passed, coverage or key counts — not only prose, so the result reads at a glance.
 
-**Audit** — search for duplication, architectural drift, dead code, tight coupling, SOLID violations, unnecessary abstractions, complexity increase, owner-rule violations, and future maintenance risks.
+**Audit** — **spawn at least two workers**, and more as complexity warrants. One sweeps for duplication, architectural drift, dead code, tight coupling, SOLID violations, unnecessary abstractions, rising complexity, owner-rule violations and future maintenance risk. The others work the [Audit Dimensions](#the-audit-dimensions), split between them. Parallel readers are the point: the author of a change is the worst-placed person to see what they just built, and a single reviewer tends to re-walk the path the implementation already took. **A finding outside the current Issue's scope is neither discarded nor quietly fixed — report it and propose it as its own Issue.** **The audit is never where you economise:** it runs at full strength on the strongest available model, however cheaply the planning states were run. Planning committees are an insurance policy against an answer being unsettled; the audit is the one control that has actually fired — in #76 cycle 2 it caught a change that was green, red-first-tested and still a net regression, and sent it back to Design.
+
 
 **Knowledge Capture** — summarize decisions. Document tradeoffs. Record architectural rationale. Update owner decision records.
 
@@ -784,26 +814,134 @@ Implementation is only allowed after all blocking questions are resolved or expl
 
 The gate also carries the **Privacy by Design questions (Art. 25)**: whether the task touches personal data and, if so, its category, legal basis, retention window and privacy-preserving default. They live here because Art. 25 is about defaults chosen *at design time* — answering them before implementation is free, while answering them afterwards means migrating data that should never have been collected. They are enforced, not merely asked: an undeclared model fails `manage.py check`, and `ops/tests/test_privacy_contract.py` pins the rest. The resulting record of processing is generated from the code at [`docs/PRIVACY_REGISTER.md`](docs/PRIVACY_REGISTER.md).
 
+## Committees (independent passes on the same question)
+
+A committee is **three workers given the same question, not three workers splitting it**. They do not coordinate, and they are not expected to agree — two LLM passes over the same problem rarely land in the same place, and that spread is the product. A single pass reads as confident whether or not it is right; three passes make the uncertainty measurable, because the places they diverge are exactly the places the answer was never solid.
+
+This is a different mechanism from the workers in the **Audit** state, which divide the dimensions between them. Division covers more of the problem. Replication tests whether the answer is solid.
+
+**No worker ever trusts another worker's output — the main worker's included:** every claim is re-derived from the source before it is used, because a confident, articulate pass is precisely the one that otherwise goes unchecked.
+
+**Committees run on the cheap model; the main worker synthesises on the strong one.** A committee buys *spread*, not depth — the product is where three independent passes diverge, and independence is not a property of model size. Three top-tier passes cost four to five times as much and return the same disagreement. The main worker stays on the strongest available model, because re-deriving a contested claim from source is the half that actually needs the depth.
+
+**Committees run on planning states only (1–7).** Before the gate, a disagreement is cheap and informative: three architecture models that differ tell the owner something no single model can. After the gate the approach is settled, and three parallel implementations produce a merge problem rather than an insight.
+
+### What severity buys
+
+| Severity | Committees | Also |
+| --- | --- | --- |
+| `trivial` | none | Phases may be compressed and reported together. |
+| `standard` | one, at the **Confidence Gate** | The rest of the planning states run single-pass. |
+| `complex` | **Option Landscape (2)**, **Architecture Model (5)**, **Confidence Gate** | Divergences summarised per state. |
+| `critical` | the same three | The owner **rules on each unresolved divergence** rather than receiving a summary of it. Nothing proceeds on a split the owner has not seen. |
+
+**Why those three and not all seven.** A committee earns its cost where the answer is not yet determined. Those three states are where the *risk table* is built and discharged, and an unresolved risk is the only thing a committee can catch that a single pass cannot. The other planning states are mostly bookkeeping over decisions already made — a mission restated, an owner ruling recorded, a plan ordered — and three passes over them return three phrasings of one answer. The evidence is #76 cycle 2: exactly one known unknown (“`user IS NULL` is right for `Order` but wrong for `ConsentRecord`”) was scored 8 on the Phase 5 risk table, delegated past the gate, and cost the cycle its entire first implementation. That is a Phase 5 and gate failure, not a Mission failure.
+
+Severity is set in the Mission Brief and may be **raised** at any later state — discovering the task is harder than it looked is a normal outcome of Repository Analysis, and the cycle should respond to it rather than carry the original guess to the end. Lowering it is an owner decision.
+
+### Reporting a committee
+
+**A planning phase produces exactly ONE report, and not until every worker on it has finished.** The main worker's pass is an input to that brief, never a deliverable of its own — publishing it first frames the owner's reading of everything that follows, and turns an audit into a correction notice.
+
+Publish the spread, not a merged answer. A summary that hides the disagreement has thrown away the only thing three passes bought:
+
+```text
+Committee — <state> (severity: <level>)
+
+Converged
+• ...
+
+Diverged
+• <what they disagreed about> — A: ... | B: ... | C: ...
+
+Consequence
+• <what the divergence means for the decision, and what would settle it>
+```
+
+**Never present a committee's output as consensus it did not reach.** If two workers agree and one dissents, the dissent is reported with its reasoning — a lone objection that turns out to be right is the entire reason for running three.
+
+## The Audit Dimensions
+
+The **Architectural Audit** state asks a different question from **Verification**. Verification asks whether the thing works; the audit asks what the thing *costs* — to read, to change, to operate, to trust. A change can pass every test and still leave the system worse, and nothing in a green suite will say so.
+
+These are the dimensions to audit against. Not a checklist to tick end to end on every task: pick the ones the change actually touches, and say which you picked. An audit that claims all twelve on a one-file change is not an audit.
+
+**1. Correctness** — *does it actually do what it is supposed to?*
+Functional correctness · edge cases · error handling · state transitions · algorithmic correctness · agreement between intended and actual behaviour.
+
+**2. Architecture** — *is the system structurally sound?*
+Separation of concerns · coupling and cohesion · dependency direction · modularity · quality of abstraction · domain boundaries · circular dependencies · layer violations · single sources of truth.
+
+**3. Complexity** — *how hard is this to understand and change?*
+Cyclomatic and cognitive complexity · duplication · nesting depth · function and class size · dependency-graph shape · number of execution paths · accidental complexity.
+*A codebase can be functionally correct and still be structurally pathological. Correctness does not bound complexity.*
+
+**4. Computational efficiency** — *how well does it use the machine?*
+Time and space complexity · CPU · allocation · I/O · database queries · network calls · algorithmic bottlenecks · concurrency · cache effectiveness.
+*Three separable questions: **algorithmic** efficiency is the complexity of the computation, **implementation** efficiency is how well that computation is realised, **system** efficiency is how well the whole architecture executes. A change can improve one and ruin another.*
+
+**5. Maintainability** — *what will the next change cost?*
+Change propagation · dependency stability · testability · readability · documentation · API stability · technical debt · ownership concentration · ease of adding new behaviour.
+*The measure worth taking is **change amplification**: how many parts of the system must be modified to make one conceptual change.*
+
+**6. Reliability** — *what happens when things go wrong?*
+Failure containment · recovery · retry behaviour · idempotency · fault tolerance · graceful degradation · transaction boundaries · data consistency · observability.
+
+**7. Security** — *can this be abused?*
+Authentication · authorisation · input validation · injection · secrets management · dependency vulnerabilities · privilege escalation · data exposure · cryptographic practice.
+
+**8. Testability** — *can confidence in the behaviour actually be established?*
+Unit, integration and end-to-end coverage · branch and path coverage · mutation testing · test isolation · determinism · mock complexity · untested failure modes.
+*Coverage is not confidence. A codebase can sit at 95% line coverage while barely testing anything that matters — and a gate that runs without checking anything reports green just as loudly as one that works.*
+
+**9. Observability** — *can an engineer tell what the system is doing?*
+Structured logging · metrics · tracing · error reporting · correlation ids · health checks · audit trails · debuggability.
+
+**10. Dependency health** — *what does this rely on?*
+External libraries · version age · known vulnerabilities · dependency depth and concentration · licensing · abandoned packages · internal service dependencies · API coupling.
+
+**11. Data integrity** — *how safely is information handled?*
+Type safety · validation · schema consistency · referential integrity · serialisation · transaction correctness · concurrency conflicts · data lifecycle · migration safety.
+
+**12. Operational characteristics** — *can it survive production?*
+Deployment complexity · configuration management · environment parity · rollback capability · startup and shutdown · resource limits · scaling behaviour · failure recovery · upgrade compatibility.
+
 ## The Recursive Workflow (every task is its own cycle)
 
 Do not treat the session as a single linear pass (`Goal → Questions → Design → Plan → Code → Verify`). Treat **every implementation task** as its own complete engineering cycle:
 
 ```mermaid
 flowchart TD
-    M[Mission] --> OL[Option Landscape]
-    OL --> OD[Owner Decisions]
-    OD --> RA[Repository Analysis]
-    RA --> AM[Architecture Model]
-    AM --> D[Design]
-    D --> P[Plan]
-    P --> I[Implement]
-    I --> V[Verify]
-    V -->|Failed?| D
-    V --> A[Architectural Audit]
-    A --> KC[Knowledge Capture]
+    subgraph PLAN["PLANNING · states 1-7 · committees run here"]
+        direction TB
+        M[1 Mission] --> OL[2 Option Landscape]
+        OL --> OD[3 Owner Decisions]
+        OD --> RA[4 Repository Analysis]
+        RA --> AM[5 Architecture Model]
+        AM --> D[6 Design]
+        D --> P[7 Plan]
+        P --> CG{{Confidence Gate}}
+    end
+
+    subgraph BUILD["IMPLEMENTATION · states 8-11"]
+        direction TB
+        I[8 Implement] --> V[9 Verify]
+        V --> A[10 Architectural Audit]
+        A --> KC[11 Knowledge Capture]
+    end
+
+    CG ==>|owner approves| I
+    V -->|failed| D
     KC --> NT[Next Planned Task]
     NT --> M
+
+    classDef nGate fill:#ffe6cc,stroke:#d79b00,color:#4a2500;
+    class CG nGate;
+    style PLAN fill:#f3eefb,stroke:#9673a6,color:#333333;
+    style BUILD fill:#f0f8f0,stroke:#82b366,color:#333333;
 ```
+
+The diagram carries what the numbered list cannot: **where the line falls**. Everything above the Confidence Gate is reversible for the cost of a conversation; everything below it is reversible for the cost of the work. The gate is the only edge the owner rules on, and `failed` returning to Design rather than to Implementation is the same principle — a verification failure is a planning problem until proven otherwise.
 
 This mirrors the iterative development used by mature engineering teams: every task is independently understood, designed, implemented, verified and audited before moving on. It minimizes context drift, localizes defects, and continuously reinforces architectural consistency.
 
@@ -817,6 +955,32 @@ The Constitution above is **stable** and shared by every session. The **Session 
 - **Owner decisions** are recorded **inline in the code they govern** (the decision-log convention) and cross-referenced from the Issue — the code, not the Issue, is their canonical home.
 - The engineering cycle for a task **ends by closing its Issue**, after Knowledge Capture. An open Issue is an in-flight cycle; a closed Issue is a completed, audited, captured one.
 - GitHub Issues are the backlog **and** the working record; they supersede the former `TODO.md`.
+- **Reaching the Issues is one line, and there is no second way.** No `gh` CLI, no GitHub MCP, no helper script: the PAT already sits in the git credential store and is resolved inline, never printed. Vary only the path — `issues?state=open&per_page=100` to list, `issues/14` to read one, `-X PATCH -d '{"body":"…"}'` to write one back.
+
+  ```bash
+  TOKEN=$(printf 'protocol=https\nhost=github.com\n\n' | git credential fill | sed -n 's/^password=//p'); curl -sS -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/MKRO-JWL/pjscollectables-platform/issues/14"
+  ```
+
+  If that line fails, **stop and say so.** Searching for another route — environment variables, config files, a regenerated helper — spends the session probing and finds nothing, because nothing else is there.
+
+### The label vocabulary
+
+Three labels, each answering a different question. A proposed starting set — rename or prune it, but keep the three axes, because two of them now gate behaviour.
+
+**`severity:` — how much process the task earns.** Read by [Committees](#committees-independent-passes-on-the-same-question); see the table there.
+
+| | |
+| --- | --- |
+| `trivial` | Understood before it is opened. One file, no design space, nothing to investigate. |
+| `standard` | The default. Real work with a known shape and a bounded blast radius. |
+| `complex` | The shape is not known yet, or the blast radius crosses app or repository boundaries. |
+| `critical` | Money, personal data, authentication, deploys, or anything a customer or the law relies on being right. |
+
+**`concern:` — which quality is at stake.** Selects the [Audit Dimensions](#the-audit-dimensions) the audit must cover, so a task labelled `concern:security` cannot be audited for readability alone. Drawn from the ISO/IEC 25010 categories this ecosystem already scores against: `correctness` · `security` · `privacy` · `performance` · `reliability` · `maintainability` · `operability` · `compatibility` · `usability`.
+
+**`type:` — what kind of change it is.** Descriptive; nothing reads it yet. `feature` · `fix` · `refactor` · `docs` · `infra` · `investigation`.
+
+More than one `concern:` is normal and often honest — a payment change is `correctness` and `security` at once. More than one `severity:` is a contradiction; if two apply, the higher one does.
 
 ---
 

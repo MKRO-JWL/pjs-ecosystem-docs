@@ -1,0 +1,340 @@
+{
+  "_generated": "Generated from the privacy declarations by the export_policy_data management command. Do not edit by hand — the currency gate will fail. Change the declarations instead; that diff IS the privacy impact.",
+  "controller": {
+    "name": "Jonathan Alexander David Wirtz",
+    "address": "Am Sändchen 22, 53545 Linz am Rhein, Germany",
+    "email": "PJs-Collectables@gmx.net",
+    "phone": "+49 1577 0271606"
+  },
+  "data": [
+    {
+      "category": "account",
+      "bases": [
+        "consent",
+        "contract",
+        "legal_obligation",
+        "legitimate_interest"
+      ],
+      "retention": [
+        {
+          "kind": "days",
+          "days": 365
+        },
+        {
+          "kind": "days",
+          "days": 90
+        },
+        {
+          "kind": "pending",
+          "issue": "#14"
+        },
+        {
+          "kind": "account_lifetime"
+        }
+      ]
+    },
+    {
+      "category": "address",
+      "bases": [
+        "contract",
+        "legal_obligation"
+      ],
+      "retention": [
+        {
+          "kind": "statutory",
+          "years": 6,
+          "cite": "§147 Abs. 3 AO (sonstige Unterlagen — Abs. 1 Nr. 5)"
+        },
+        {
+          "kind": "days",
+          "days": 90
+        },
+        {
+          "kind": "account_lifetime"
+        }
+      ]
+    },
+    {
+      "category": "behaviour",
+      "bases": [
+        "contract"
+      ],
+      "retention": [
+        {
+          "kind": "days",
+          "days": 90
+        },
+        {
+          "kind": "account_lifetime"
+        },
+        {
+          "kind": "tied_to",
+          "parent_category": true
+        }
+      ]
+    },
+    {
+      "category": "business_contact",
+      "bases": [
+        "contract",
+        "legal_obligation",
+        "legitimate_interest"
+      ],
+      "retention": [
+        {
+          "kind": "statutory",
+          "years": 10,
+          "cite": "§14b Abs. 1 UStG + §147 Abs. 1 Nr. 4 AO (received invoices) — 8-year floor; 10 by owner election"
+        },
+        {
+          "kind": "account_lifetime"
+        },
+        {
+          "kind": "while_needed"
+        }
+      ]
+    },
+    {
+      "category": "communication",
+      "bases": [
+        "legal_obligation",
+        "legitimate_interest"
+      ],
+      "retention": [
+        {
+          "kind": "statutory",
+          "years": 6,
+          "cite": "§147 Abs. 3 AO (received business correspondence — Abs. 1 Nr. 2 and Nr. 5 are both six years)"
+        },
+        {
+          "kind": "days",
+          "days": 365
+        }
+      ]
+    },
+    {
+      "category": "contact",
+      "bases": [
+        "consent",
+        "contract",
+        "legal_obligation",
+        "legitimate_interest"
+      ],
+      "retention": [
+        {
+          "kind": "statutory",
+          "years": 6,
+          "cite": "§147 Abs. 3 AO (received business correspondence — Abs. 1 Nr. 2 and Nr. 5 are both six years)"
+        },
+        {
+          "kind": "statutory",
+          "years": 6,
+          "cite": "§147 Abs. 3 AO (sonstige Unterlagen — Abs. 1 Nr. 5)"
+        },
+        {
+          "kind": "days",
+          "days": 365
+        },
+        {
+          "kind": "pending",
+          "issue": "#14"
+        },
+        {
+          "kind": "account_lifetime"
+        }
+      ]
+    },
+    {
+      "category": "financial",
+      "bases": [
+        "contract",
+        "legal_obligation"
+      ],
+      "retention": [
+        {
+          "kind": "statutory",
+          "years": 10,
+          "cite": "§147 Abs. 1 Nr. 4 AO (Buchungsbelege) — 8-year floor since BEG IV; 10 by owner election"
+        },
+        {
+          "kind": "statutory",
+          "years": 6,
+          "cite": "§147 Abs. 3 AO (sonstige Unterlagen — Abs. 1 Nr. 5)"
+        }
+      ]
+    },
+    {
+      "category": "identity",
+      "bases": [
+        "contract",
+        "legal_obligation",
+        "legitimate_interest"
+      ],
+      "retention": [
+        {
+          "kind": "statutory",
+          "years": 10,
+          "cite": "§147 Abs. 1 Nr. 4 AO (Buchungsbelege) — 8-year floor since BEG IV; 10 by owner election"
+        },
+        {
+          "kind": "statutory",
+          "years": 6,
+          "cite": "§147 Abs. 3 AO (sonstige Unterlagen — Abs. 1 Nr. 5)"
+        },
+        {
+          "kind": "days",
+          "days": 365
+        },
+        {
+          "kind": "days",
+          "days": 90
+        },
+        {
+          "kind": "account_lifetime"
+        }
+      ]
+    },
+    {
+      "category": "order",
+      "bases": [
+        "contract",
+        "legal_obligation"
+      ],
+      "retention": [
+        {
+          "kind": "statutory",
+          "years": 10,
+          "cite": "§147 Abs. 1 Nr. 4 AO (Buchungsbelege) — 8-year floor since BEG IV; 10 by owner election"
+        },
+        {
+          "kind": "statutory",
+          "years": 6,
+          "cite": "§147 Abs. 3 AO (sonstige Unterlagen — Abs. 1 Nr. 5)"
+        },
+        {
+          "kind": "days",
+          "days": 90
+        },
+        {
+          "kind": "tied_to",
+          "parent_category": true
+        }
+      ]
+    },
+    {
+      "category": "technical",
+      "bases": [
+        "contract",
+        "legitimate_interest"
+      ],
+      "retention": [
+        {
+          "kind": "days",
+          "days": 1
+        },
+        {
+          "kind": "days",
+          "days": 180
+        },
+        {
+          "kind": "days",
+          "days": 90
+        },
+        {
+          "kind": "tied_to",
+          "parent_category": true
+        }
+      ]
+    }
+  ],
+  "recipients": [
+    {
+      "key": "cloudflare-edge",
+      "categories": [
+        "technical"
+      ],
+      "basis": [
+        "legitimate_interest"
+      ],
+      "location": ""
+    },
+    {
+      "key": "cloudflare-r2-backups",
+      "categories": [
+        "account",
+        "address",
+        "behaviour",
+        "business_contact",
+        "communication",
+        "contact",
+        "financial",
+        "identity",
+        "order",
+        "technical"
+      ],
+      "basis": [
+        "legitimate_interest"
+      ],
+      "location": ""
+    },
+    {
+      "key": "cloudflare-r2-media",
+      "categories": [
+        "address",
+        "financial",
+        "identity"
+      ],
+      "basis": [
+        "legal_obligation",
+        "legitimate_interest"
+      ],
+      "location": ""
+    },
+    {
+      "key": "gmx-mail",
+      "categories": [
+        "communication",
+        "contact",
+        "identity",
+        "order"
+      ],
+      "basis": [
+        "contract",
+        "legitimate_interest"
+      ],
+      "location": ""
+    },
+    {
+      "key": "lexware",
+      "categories": [
+        "address",
+        "business_contact",
+        "financial",
+        "identity",
+        "order"
+      ],
+      "basis": [
+        "contract",
+        "legal_obligation"
+      ],
+      "location": ""
+    },
+    {
+      "key": "paypal",
+      "categories": [
+        "financial"
+      ],
+      "basis": [
+        "contract"
+      ],
+      "location": ""
+    }
+  ],
+  "disclosure_gaps": [
+    "third_country_locations"
+  ],
+  "consent_purposes": [
+    "newsletter"
+  ],
+  "automated_decision_making": false
+}
