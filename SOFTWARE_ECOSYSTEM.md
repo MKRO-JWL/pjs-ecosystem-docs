@@ -456,7 +456,7 @@ One gitignored root `.env` (template `.env.example`). Datastore/Grafana credenti
 | `CORS_ALLOWED_ORIGINS` | csv | — (the SPA origin[s]) | no |
 | `CSRF_TRUSTED_ORIGINS` | csv | — (admin host) | no |
 | `SECURE_SSL_REDIRECT` / `SECURE_HSTS_*` | bool/int | `True` / `63072000` | no |
-| `NUM_PROXIES` | int | `2` (Cloudflare → nginx) | no (but must match the real proxy chain — it is the throttle's trust boundary) |
+| `NUM_PROXIES` | int | `1` (nginx overwrites XFF with the visitor's address, taken from Cloudflare's header) | no (but must match the real proxy chain — it is the throttle's trust boundary) |
 | `LOG_LEVEL` | enum | `INFO` | no |
 | `DB_NAME` / `DB_USER` / `DB_PASSWORD` | string | — | **yes** (required) |
 | `DB_HOST` / `DB_PORT` | string/int | `postgres` / `5432` | no |
