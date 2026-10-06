@@ -322,7 +322,9 @@
     {
       "key": "paypal",
       "categories": [
-        "financial"
+        "address",
+        "financial",
+        "identity"
       ],
       "basis": [
         "contract"
