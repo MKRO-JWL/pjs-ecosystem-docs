@@ -475,7 +475,7 @@ One gitignored root `.env` (template `.env.example`). Datastore/Grafana credenti
 | `DEFAULT_FROM_EMAIL` | email | `pjs-collectables@gmx.net` | no |
 | `IMAP_HOST` / `IMAP_PORT` / `IMAP_USE_SSL` / `IMAP_MAILBOX` | string/int/bool | `imap.gmx.net` / `993` / `True` / `INBOX` | no |
 | `IMAP_USER` / `IMAP_PASSWORD` | string | default to `GMX_MAIL`/`GMX_PASSWORD` | **yes** |
-| `IS_FINAL` / `IS_NEW_TAX` / `IS_CREATING` | bool | invoicing job toggles | no |
+| `IS_FINAL` / `IS_NEW_TAX` / `IS_CREATING` | bool | invoicing job toggles (shop invoices and proformas ignore `IS_FINAL`: they are final exactly while the shop door is open) | no |
 | `R2_BUCKET` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_ENDPOINT_URL` | string | — (all four set → R2; else local FS) | **yes** |
 | `R2_CUSTOM_DOMAIN` / `R2_REGION` | string | — / `auto` | no |
 | `CLOUDFLARE_DNS_API_TOKEN` / `LETSENCRYPT_EMAIL` | string | — (prod overlay, **required**) | **yes** |
