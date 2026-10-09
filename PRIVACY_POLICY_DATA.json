@@ -10,7 +10,6 @@
     {
       "category": "account",
       "bases": [
-        "consent",
         "contract",
         "legal_obligation",
         "legitimate_interest"
@@ -83,8 +82,8 @@
       "retention": [
         {
           "kind": "statutory",
-          "years": 10,
-          "cite": "§14b Abs. 1 UStG + §147 Abs. 1 Nr. 4 AO (received invoices) — 8-year floor; 10 by owner election"
+          "years": 8,
+          "cite": "§14b Abs. 1 UStG + §147 Abs. 1 Nr. 4 AO (received invoices) — 8 years"
         },
         {
           "kind": "account_lifetime"
@@ -115,7 +114,6 @@
     {
       "category": "contact",
       "bases": [
-        "consent",
         "contract",
         "legal_obligation",
         "legitimate_interest"
@@ -125,6 +123,11 @@
           "kind": "statutory",
           "years": 6,
           "cite": "§147 Abs. 3 AO (received business correspondence — Abs. 1 Nr. 2 and Nr. 5 are both six years)"
+        },
+        {
+          "kind": "statutory",
+          "years": 6,
+          "cite": "§147 Abs. 3 AO (received business correspondence — Abs. 1 Nr. 2)"
         },
         {
           "kind": "statutory",
@@ -153,8 +156,8 @@
       "retention": [
         {
           "kind": "statutory",
-          "years": 10,
-          "cite": "§147 Abs. 1 Nr. 4 AO (Buchungsbelege) — 8-year floor since BEG IV; 10 by owner election"
+          "years": 8,
+          "cite": "§147 Abs. 1 Nr. 4 AO (Buchungsbelege) — 8 years since BEG IV"
         },
         {
           "kind": "statutory",
@@ -173,8 +176,13 @@
       "retention": [
         {
           "kind": "statutory",
-          "years": 10,
-          "cite": "§147 Abs. 1 Nr. 4 AO (Buchungsbelege) — 8-year floor since BEG IV; 10 by owner election"
+          "years": 8,
+          "cite": "§147 Abs. 1 Nr. 4 AO (Buchungsbelege) — 8 years since BEG IV"
+        },
+        {
+          "kind": "statutory",
+          "years": 6,
+          "cite": "§147 Abs. 3 AO (received business correspondence — Abs. 1 Nr. 2)"
         },
         {
           "kind": "statutory",
@@ -203,8 +211,13 @@
       "retention": [
         {
           "kind": "statutory",
-          "years": 10,
-          "cite": "§147 Abs. 1 Nr. 4 AO (Buchungsbelege) — 8-year floor since BEG IV; 10 by owner election"
+          "years": 8,
+          "cite": "§147 Abs. 1 Nr. 4 AO (Buchungsbelege) — 8 years since BEG IV"
+        },
+        {
+          "kind": "statutory",
+          "years": 6,
+          "cite": "§147 Abs. 3 AO (received business correspondence — Abs. 1 Nr. 2)"
         },
         {
           "kind": "statutory",
