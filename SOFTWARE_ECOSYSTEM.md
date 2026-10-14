@@ -392,7 +392,7 @@ The **storefront backend** and the only module that authenticates customers, per
 - **Sale push (`shop/services/im_integration.py`)** — on capture, pushes sold lines to `inventory.services.record_sale(...)` **in-process** (the old best-effort HTTP POST to `im-web:8000/api/sales/` is gone). FIFO consumption + margin happen in the same process; a failure there is logged and never breaks checkout.
 - **Invoicing hook (`shop/services/lexware_integration.py`)** and **mail (`shop/services/mail.py`)** — invoice generation and transactional email (password reset, etc.) via the invoicing/mailer seams.
 
-**Non-goals:** shop is not the catalogue authority (catalog) and not the inventory ledger (it notifies inventory of sales but does not track on-hand stock). Product images/media are served from `pjs-media` (R2 in prod).
+**Non-goals:** shop is not the catalogue authority (catalog) and not the inventory ledger (it notifies inventory of sales but does not track on-hand stock). Product images/media are served from `pjs-media` (R2 in prod). Owner design decisions govern the order lifecycle, server-side pricing and shipping, checkout and the post-checkout claim, and account identity (one account per address, the username namespace, severed orders); each is recorded inline in `shop/`, at the code it governs.
 
 ### invoicing (former LexwareAPI)
 
