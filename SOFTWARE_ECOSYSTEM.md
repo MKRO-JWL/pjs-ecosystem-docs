@@ -273,13 +273,14 @@ Consolidating the former services into one deployable was the point of the migra
 
 - `config/` – Django project package: `settings.py`, `urls.py` (root URLconf that mounts every app), `wsgi.py`/`asgi.py`, `celery.py`.
 - `core/` – shared base: cross-cutting `models`, `utils`, `services`, `middleware`, `trace.py` (correlation IDs), `images.py`. **Must not import any domain app** (import-linter rule #1).
-- `catalog/` – catalogue SSOT (former DBUpdater): `models`, `serializers`, `views`, `signals`, `tasks`, `urls`, and `services/` (`products`, `product_query`, `catalog_update`, `category_utils`, `gpsr_normalizer`, `exports`, `close_out`).
+- `catalog/` – catalogue SSOT (former DBUpdater): `models`, `serializers`, `views`, `signals`, `tasks`, `urls`, and `services/` (`products`, `product_query`, `catalog_update`, `category_utils`, `gpsr_normalizer`, `exports`, `close_out`, `photos`, `photo_upload`), `photo_admin.py`, and `media_sources/` (the media-kit source list photos and brand logos may come from).
 - `inventory/` – stock ledger (former InventoryManager): `models`, `views`, `serializers`, `auth.py`, `urls`, `tasks`, `dbu_sync.py`, `sold_order_parser.py`, `analytics.py`, `analysis_views.py`/`analysis_urls.py`, and `services.py` (the cross-app seam: `receive_order`, `record_sale`, `receive_files`).
 - `invoicing/` – bookkeeping bridge (former LexwareAPI): `models` (Job/JobLog, TaxRate, pending refs, withdrawal buckets), `views`, `urls`, and `services/` (`lexware`, `jobs`, `orders`, `upload`, `mailer`).
 - `shop/` – storefront backend (former PJsShop): `models`, `views`, `serializers`, `urls`, `auth_backends`, `forms`, `tasks`, `signals`, and `services/` (`paypal`, `im_integration`, `lexware_integration`, `mail`).
 - `inbox/` – mail ingress (former MailBot): `models` (`SenderRule`, `IngestedMessage`), `tasks`, and `services/` (`client` IMAP, `ingest`, `handlers` registry, `order_ingest` handler).
 - `b2b/` – business storefront: `models` (`BusinessProfile`), `views`, `serializers`, `permissions`, `urls`.
 - `ops/` – platform ops (former InfrastructureStack `is-web`): `status.py` (`/health`, `/status`), `maintenance.py`, `views`, `services`, `tasks`, `signals`.
+- `agent_workflows/` – one prompt file per scheduled agent workflow (e.g. `product-photos.md`), run from the owner's PC; not deployed.
 - `infra/` – deployment assets (not Python): `nginx/` (dev + `nginx.prod.conf.template`, `cloudflare/`), `prometheus/`, `alertmanager/`, `loki`/`promtail/`, `grafana/`, `certbot/`, `cron/crontab`.
 - `ops/` (scripts), `docker-compose.yml` (+ `.override.yml` dev, `.prod.yml` prod), `Dockerfile`, `entrypoint.sh`, `gunicorn.conf.py`, `.env.example`, `.importlinter`, `DEPLOY.md`, `requirements*.txt`.
 

@@ -291,19 +291,6 @@
       "location": ""
     },
     {
-      "key": "cloudflare-r2-media",
-      "categories": [
-        "address",
-        "financial",
-        "identity"
-      ],
-      "basis": [
-        "legal_obligation",
-        "legitimate_interest"
-      ],
-      "location": ""
-    },
-    {
       "key": "gmx-mail",
       "categories": [
         "communication",
