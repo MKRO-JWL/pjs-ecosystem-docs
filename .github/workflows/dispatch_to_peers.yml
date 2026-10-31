@@ -2,8 +2,9 @@ name: Dispatch MD Sync to Peers
 
 # Every push, not only SOFTWARE_ECOSYSTEM.md (platform #77). The platform also pushes
 # PRIVACY_POLICY_DATA.json here, and the old `paths` filter let a policy-only change
-# through without telling the storefront, so its public privacy page went stale. Every
-# push here is a content change: the pushers commit only when a file differs.
+# through without telling the storefront, so its public privacy page went stale. The
+# syncing repos push here only when a file differs; any other push (a hand edit to this
+# workflow or the README) costs one no-op sync per peer.
 on:
   push:
     branches: [main]
@@ -29,13 +30,17 @@ jobs:
 
       - name: Dispatch sync_requested to peers
         run: |
+          # -f: a refused dispatch (an expired DISPATCH_PAT) fails this job instead of
+          # printing the error and passing. Every peer is still tried first, so one
+          # refusal does not also cost the others their sync.
+          failed=0
           while read -r repo; do
             echo "Dispatching to $repo"
-            # -f: a refused dispatch (an expired DISPATCH_PAT) fails this job instead of
-            # printing the error and passing.
             curl -fsS -X POST \
               -H "Authorization: token ${{ secrets.DISPATCH_PAT }}" \
               -H "Accept: application/vnd.github.v3+json" \
               https://api.github.com/repos/$repo/dispatches \
-              -d "{\"event_type\":\"$DISPATCH_EVENT\"}"
+              -d "{\"event_type\":\"$DISPATCH_EVENT\"}" \
+              || { echo "::error::dispatch to $repo failed"; failed=1; }
           done <<< "${{ steps.repo-list.outputs.REPOS }}"
+          exit "$failed"
