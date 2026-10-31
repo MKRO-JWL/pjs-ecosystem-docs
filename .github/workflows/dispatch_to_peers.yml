@@ -1,10 +1,12 @@
 name: Dispatch MD Sync to Peers
 
+# Every push, not only SOFTWARE_ECOSYSTEM.md (platform #77). The platform also pushes
+# PRIVACY_POLICY_DATA.json here, and the old `paths` filter let a policy-only change
+# through without telling the storefront, so its public privacy page went stale. Every
+# push here is a content change: the pushers commit only when a file differs.
 on:
   push:
     branches: [main]
-    paths:
-      - 'SOFTWARE_ECOSYSTEM.md'
 
 jobs:
   dispatch-sync:
@@ -29,7 +31,9 @@ jobs:
         run: |
           while read -r repo; do
             echo "Dispatching to $repo"
-            curl -X POST \
+            # -f: a refused dispatch (an expired DISPATCH_PAT) fails this job instead of
+            # printing the error and passing.
+            curl -fsS -X POST \
               -H "Authorization: token ${{ secrets.DISPATCH_PAT }}" \
               -H "Accept: application/vnd.github.v3+json" \
               https://api.github.com/repos/$repo/dispatches \
