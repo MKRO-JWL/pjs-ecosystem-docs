@@ -3,7 +3,7 @@
   "controller": {
     "name": "Jonathan Alexander David Wirtz",
     "address": "Am Sändchen 22, 53545 Linz am Rhein, Germany",
-    "email": "PJs-Collectables@gmx.net",
+    "email": "support@pjscollectables.com",
     "phone": "+49 1577 0271606"
   },
   "data": [
@@ -16,16 +16,17 @@
       ],
       "retention": [
         {
+          "kind": "claims_period",
+          "years": 3,
+          "cite": "§§ 195, 199 Abs. 1 BGB"
+        },
+        {
           "kind": "days",
           "days": 365
         },
         {
           "kind": "days",
           "days": 90
-        },
-        {
-          "kind": "pending",
-          "issue": "#14"
         },
         {
           "kind": "account_lifetime"
@@ -42,7 +43,7 @@
         {
           "kind": "statutory",
           "years": 6,
-          "cite": "§147 Abs. 3 AO (sonstige Unterlagen — Abs. 1 Nr. 5)"
+          "cite": "§ 147 Abs. 1 Nr. 5, Abs. 3 AO"
         },
         {
           "kind": "days",
@@ -83,7 +84,7 @@
         {
           "kind": "statutory",
           "years": 8,
-          "cite": "§14b Abs. 1 UStG + §147 Abs. 1 Nr. 4 AO (received invoices) — 8 years"
+          "cite": "§ 14b Abs. 1 UStG, § 147 Abs. 1 Nr. 4 AO"
         },
         {
           "kind": "account_lifetime"
@@ -103,7 +104,7 @@
         {
           "kind": "statutory",
           "years": 6,
-          "cite": "§147 Abs. 3 AO (received business correspondence — Abs. 1 Nr. 2 and Nr. 5 are both six years)"
+          "cite": "§ 147 Abs. 1 Nr. 2 und 5, Abs. 3 AO"
         },
         {
           "kind": "days",
@@ -122,25 +123,26 @@
         {
           "kind": "statutory",
           "years": 6,
-          "cite": "§147 Abs. 3 AO (received business correspondence — Abs. 1 Nr. 2 and Nr. 5 are both six years)"
+          "cite": "§ 147 Abs. 1 Nr. 2 und 5, Abs. 3 AO"
         },
         {
           "kind": "statutory",
           "years": 6,
-          "cite": "§147 Abs. 3 AO (received business correspondence — Abs. 1 Nr. 2)"
+          "cite": "§ 147 Abs. 1 Nr. 2, Abs. 3 AO"
         },
         {
           "kind": "statutory",
           "years": 6,
-          "cite": "§147 Abs. 3 AO (sonstige Unterlagen — Abs. 1 Nr. 5)"
+          "cite": "§ 147 Abs. 1 Nr. 5, Abs. 3 AO"
+        },
+        {
+          "kind": "claims_period",
+          "years": 3,
+          "cite": "§§ 195, 199 Abs. 1 BGB"
         },
         {
           "kind": "days",
           "days": 365
-        },
-        {
-          "kind": "pending",
-          "issue": "#14"
         },
         {
           "kind": "account_lifetime"
@@ -157,12 +159,12 @@
         {
           "kind": "statutory",
           "years": 8,
-          "cite": "§147 Abs. 1 Nr. 4 AO (Buchungsbelege) — 8 years since BEG IV"
+          "cite": "§ 147 Abs. 1 Nr. 4, Abs. 3 AO"
         },
         {
           "kind": "statutory",
           "years": 6,
-          "cite": "§147 Abs. 3 AO (sonstige Unterlagen — Abs. 1 Nr. 5)"
+          "cite": "§ 147 Abs. 1 Nr. 5, Abs. 3 AO"
         }
       ]
     },
@@ -176,18 +178,18 @@
       "retention": [
         {
           "kind": "statutory",
+          "years": 6,
+          "cite": "§ 147 Abs. 1 Nr. 2, Abs. 3 AO"
+        },
+        {
+          "kind": "statutory",
           "years": 8,
-          "cite": "§147 Abs. 1 Nr. 4 AO (Buchungsbelege) — 8 years since BEG IV"
+          "cite": "§ 147 Abs. 1 Nr. 4, Abs. 3 AO"
         },
         {
           "kind": "statutory",
           "years": 6,
-          "cite": "§147 Abs. 3 AO (received business correspondence — Abs. 1 Nr. 2)"
-        },
-        {
-          "kind": "statutory",
-          "years": 6,
-          "cite": "§147 Abs. 3 AO (sonstige Unterlagen — Abs. 1 Nr. 5)"
+          "cite": "§ 147 Abs. 1 Nr. 5, Abs. 3 AO"
         },
         {
           "kind": "days",
@@ -211,18 +213,18 @@
       "retention": [
         {
           "kind": "statutory",
+          "years": 6,
+          "cite": "§ 147 Abs. 1 Nr. 2, Abs. 3 AO"
+        },
+        {
+          "kind": "statutory",
           "years": 8,
-          "cite": "§147 Abs. 1 Nr. 4 AO (Buchungsbelege) — 8 years since BEG IV"
+          "cite": "§ 147 Abs. 1 Nr. 4, Abs. 3 AO"
         },
         {
           "kind": "statutory",
           "years": 6,
-          "cite": "§147 Abs. 3 AO (received business correspondence — Abs. 1 Nr. 2)"
-        },
-        {
-          "kind": "statutory",
-          "years": 6,
-          "cite": "§147 Abs. 3 AO (sonstige Unterlagen — Abs. 1 Nr. 5)"
+          "cite": "§ 147 Abs. 1 Nr. 5, Abs. 3 AO"
         },
         {
           "kind": "days",
@@ -291,20 +293,6 @@
       "location": ""
     },
     {
-      "key": "gmx-mail",
-      "categories": [
-        "communication",
-        "contact",
-        "identity",
-        "order"
-      ],
-      "basis": [
-        "contract",
-        "legitimate_interest"
-      ],
-      "location": ""
-    },
-    {
       "key": "lexware",
       "categories": [
         "address",
@@ -316,6 +304,20 @@
       "basis": [
         "contract",
         "legal_obligation"
+      ],
+      "location": ""
+    },
+    {
+      "key": "mailbox-org",
+      "categories": [
+        "communication",
+        "contact",
+        "identity",
+        "order"
+      ],
+      "basis": [
+        "contract",
+        "legitimate_interest"
       ],
       "location": ""
     },

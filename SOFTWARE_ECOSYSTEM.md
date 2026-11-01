@@ -28,7 +28,7 @@ flowchart LR
 
     CF -->|pjscollectables.com| NGINX
 
-    subgraph VPS["Single VPS — Docker (pjs-net + pjs-edge + pjs-monitoring)"]
+    subgraph VPS["Single VPS — Docker (pjs-net + pjs-edge + pjs-monitoring + pjs-scrape)"]
         NGINX["nginx 80/443<br/>public edge + maintenance door"]
         FRONT["PJsShopFront (Vue)<br/>pjs-shop-front:5173"]
 
@@ -62,7 +62,7 @@ flowchart LR
     SHOP -->|checkout capture| PayPal(("PayPal"))
     INVOICE -->|invoices/vouchers| Lexoffice(("Lexoffice"))
     INVOICE -->|EU VAT rates| Vatsense(("VATSense"))
-    Mailbox(("GMX mailbox")) <-->|IMAP in · SMTP out| MONO
+    Mailbox(("mailbox.org")) <-->|IMAP in · SMTP out| MONO
     MONO -.->|product media| R2(("Cloudflare R2"))
     OBS -.->|scrape /metrics · tail logs| MONO
 
@@ -105,11 +105,12 @@ This section describes the global, ecosystem-wide concerns that are not specific
 
 ### Hosting model
 
-The entire ecosystem runs on a **single VPS** under **Docker Compose**. Each independently-deployed project ships its own Compose stack and joins the shared Docker bridge networks the **monolith** defines, rather than everything living in one stack. The consolidation collapsed the old per-service bridges to three, segmented by concern:
+The entire ecosystem runs on a **single VPS** under **Docker Compose**. Each independently-deployed project ships its own Compose stack and joins the shared Docker bridge networks the **monolith** defines, rather than everything living in one stack. The consolidation collapsed the old per-service bridges to four, segmented by concern:
 
 - `pjs-net` — the main application bridge, joined **only by the monolith's own services** (`web`, `worker`, `cron`, `postgres`, `redis`, `nginx`, `certbot`). All internal service-to-service traffic and the datastores live here. Redis additionally requires a password (`REDIS_PASSWORD`, the same fail-loud `${VAR:?}` pattern as the Postgres credentials), so bridge placement alone is not the auth model.
 - `pjs-edge` — the **edge-only bridge** (arch-audit D13): nginx plus the separately-deployed storefront SPA stack ([PJsShopFront](#pjsshopfront-context)), which joins it as an *external* network so nginx can reach `pjs-shop-front:5173` by container DNS. The SPA joins **only** this bridge, so a compromised frontend container (npm supply-chain exposure) has no line-of-sight to `pjs-net` or the datastores.
 - `pjs-monitoring` — the **observability spine**: Prometheus, Alertmanager, Loki, Promtail, Grafana and cAdvisor attach here, and the `web` and `nginx` containers join it too so their `/metrics` can be scraped and their logs collected without exposing public ports.
+- `pjs-scrape` — a **scrape-only bridge** between Prometheus and the Celery `worker`, which parses untrusted files and so gets no line-of-sight to the rest of the observability stack.
 
 > [!NOTE]
 > **What changed:** the former per-service bridges (`is-net`, `dbu-net`, `im-net`, `pjs-backend-net`) are gone — with one application there are no cross-service hops left to segment. Container isolation is still the default: the datastores (`postgres`/`redis`) are reachable only on `pjs-net`, both are password-gated, and neither is ever published to the host, so they stay invisible outside the stack.
@@ -227,8 +228,8 @@ flowchart TB
     shop --> PayPal(("PayPal"))
     invoicing --> Lexoffice(("Lexoffice"))
     invoicing --> Vatsense(("VATSense"))
-    inbox <-->|IMAP| GMX(("GMX mailbox"))
-    invoicing -->|SMTP| GMX
+    inbox <-->|IMAP| MBOX(("mailbox.org"))
+    invoicing -->|SMTP| MBOX
     web -.->|media| R2(("Cloudflare R2"))
 
     classDef nStore fill:#dae8fc,stroke:#6c8ebf,color:#102a43;
@@ -239,7 +240,7 @@ flowchart TB
     class shop,inventory,b2b,catalog,invoicing,ops,core,inbox nApp;
     class worker,cron nInfra;
     class pg,redis nStore;
-    class PayPal,Lexoffice,Vatsense,GMX,R2 nExt;
+    class PayPal,Lexoffice,Vatsense,MBOX,R2 nExt;
     style edge fill:#f0f8f0,stroke:#82b366,color:#333333;
     style web fill:#f3eefb,stroke:#9673a6,color:#333333;
 ```
@@ -248,7 +249,7 @@ flowchart TB
 
 The platform is the **single system of record** for the whole business: it is where product truth, stock, orders, customers, payments, invoices and ingested mail all live. Everything else in the ecosystem is a thin client of it — the [PJsShopFront](#pjsshopfront-context) SPA renders its storefront API — so the platform is where consistency is enforced once and read everywhere.
 
-Consolidating the former services into one deployable was the point of the migration: the integrations that used to be fragile network hops (DBUpdater ↔ InventoryManager ↔ PJsShop ↔ LexwareAPI ↔ MailBot) are now **in-process function calls** across module boundaries, removing inter-service auth, retries, partial-failure handling and version skew for those paths. What the platform still depends on are genuinely external systems: **PayPal** (payment capture), **Lexoffice** (bookkeeping), **VATSense** (EU VAT rates), the **GMX mailbox** (IMAP order-email ingress + SMTP transactional mail), **Cloudflare R2** (product media), and the **wholesaler** (catalogue spreadsheets + order-confirmation emails). Data ownership is therefore total and inward: business data flows out of the platform to its clients, and only operator inputs and third-party API results flow in.
+Consolidating the former services into one deployable was the point of the migration: the integrations that used to be fragile network hops (DBUpdater ↔ InventoryManager ↔ PJsShop ↔ LexwareAPI ↔ MailBot) are now **in-process function calls** across module boundaries, removing inter-service auth, retries, partial-failure handling and version skew for those paths. What the platform still depends on are genuinely external systems: **PayPal** (payment capture), **Lexoffice** (bookkeeping), **VATSense** (EU VAT rates), the **mailbox.org mailbox** (IMAP order-email ingress + SMTP transactional mail), **Cloudflare R2** (product media), and the **wholesaler** (catalogue spreadsheets + order-confirmation emails). Data ownership is therefore total and inward: business data flows out of the platform to its clients, and only operator inputs and third-party API results flow in.
 
 > [!NOTE]
 > **Audit verdict (2026-07) — consolidation confirmed correct.** The modular monolith is the right architecture for this scale, and the former microservice topology was the textbook case of the wrong one: one operator, one dataset, no independent scaling needs. The consolidation eliminated the dominant failure class of the service era — partial network failure between services — in favour of single-database ACID transactions. The accepted trade-off (one bug can take the storefront and admin down together) is acceptable because the old topology had no meaningful fault isolation either: everything already shared one VPS and one chain of data dependencies.
@@ -302,7 +303,7 @@ All app APIs are served by the single `web` container (`web:8000`, Docker DNS) a
 | Cart | `GET/POST /api/cart/`, `POST /api/cart/add/`, `POST /api/cart/remove/`, `POST /api/cart/update/` | Session + CSRF | Cart with items + server-derived totals. | 400, 401/403 |
 | Checkout | `GET /api/checkout/initiate/` | Session | Address defaults + cart state. | 401/403, 5xx |
 | Orders | `POST /api/orders/place/` (manual/bank transfer), `GET/POST /api/orders/`, `GET /api/orders/{id}/` | Session (+ CSRF on place) | Order list/detail/placement. `POST /api/orders/create/` is **disabled (HTTP 410)**. | 400, 401/403, 410 |
-| Accounts | `POST /api/login/`, `/api/logout/`, `/api/register/`, `/api/register-after-order/`, `/api/profile/delete/`, `/api/password-reset/`, `/api/password-reset/confirm/` | Session + CSRF | Credentials/profile actions; reset links use `FRONTEND_BASE_URL`. | 400, 401 |
+| Accounts | `POST /api/login/`, `/api/logout/`, `/api/register/`, `/api/register-after-order/`, `/api/profile/delete/`, `/api/password-reset/`, `/api/password-reset/confirm/`, `/api/confirm-email/` | Session + CSRF | Credentials/profile actions; a new account signs in only after confirming its address with the mailed link and its password; reset and confirmation links use `FRONTEND_BASE_URL`. | 400, 401, 403 |
 | Profile | `GET/PATCH /api/profile/`, `GET /api/profile/wishlist/`, `GET /api/profile/orders/` | Session | Profile, addresses, wishlist, order history. | 401/403 |
 | PayPal | `POST /api/paypal/create-order/`, `POST /api/paypal/capture-order/`, `POST /api/paypal/webhook/`; `GET /api/paypal/client-id/` (no consumer since the storefront dropped PayPal's SDK) | Session+CSRF (create/capture); signature-verified (webhook) | Server-authoritative amounts; create-order takes the checkout form and answers PayPal's approval URL; capture accepts only a PayPal order this session created and re-verifies against a fresh quote; webhook is the idempotent backstop. | 400, 402, 502 |
 
@@ -316,7 +317,7 @@ All app APIs are served by the single `web` container (`web:8000`, Docker DNS) a
 | GET | `/api/b2b/profile/` | The caller's own `BusinessProfile` + verification status. | Authenticated |
 | GET | `/api/b2b/catalogue/` | B2B-only catalogue (id, blackfire_id, name, buy/sell price). | Verified business |
 
-**3. Admin & ops** — `GET /admin/` (unified Django admin; the former im/dbu/is/back admin sites collapse to one) plus the admin utility routes `/admin/sync-dbu/` and `/admin/analytics/`, and the inventory `/analysis/` dashboard — all **VPN-only**. `GET /health/` (liveness), `GET /status/` (aggregated service health, see [ops](#ops-former-infrastructurestack-is-web)), `GET /metrics` (django-prometheus, whole app). Internal app namespaces `/api/catalog/` and `/api/invoicing/` exist for admin/diagnostic use and return **404 on the public host**.
+**3. Admin & ops** — `GET /admin/` (unified Django admin; the former im/dbu/is/back admin sites collapse to one) plus the admin utility routes `/admin/sync-dbu/` and `/admin/analytics/`, and the inventory `/analysis/` dashboard — all **VPN-only**. `GET /health/` (liveness), `GET /status/` (aggregated service health, see [ops](#ops-former-infrastructurestack-is-web)), `GET /metrics` (django-prometheus, the web process). Internal app namespaces `/api/catalog/` and `/api/invoicing/` exist for admin/diagnostic use and return **404 on the public host**.
 
 **Service discovery / auth summary.** Internal Docker DNS `web:8000` on `pjs-net`; public hosts terminate TLS at nginx. Storefront = session+CSRF; B2B = session/basic + verified-business gate; admin/ops and the internal `catalog`/`invoicing` APIs = VPN network placement **plus** an owner-admin session gate at the app layer (single-superuser model). There is no global DRF authentication default — it is `[]`, so every view declares its own and a view that forgets fails closed.
 
@@ -327,7 +328,7 @@ The platform has **no in-ecosystem upstream** — PJsShopFront and IMApp consume
 - **PayPal** — OAuth + order create/capture + webhook (`api-m.sandbox.paypal.com` or live per `PAYPAL_ENV`). On outage, checkout returns `502/503` and the cart is preserved.
 - **Lexoffice** (`api.lexware.io`) — invoice/contact/voucher/file-upload operations (invoicing). Empty key disables the feature (fail-soft); on outage, affected jobs fail or report per-file failures.
 - **VATSense** (`api.vatsense.com`) — EU VAT-rate refresh (invoicing). No voucher path falls back to a default rate: an unavailable rate refuses the invoice, because a German rate on a French sale is a wrong tax document that looks like a success.
-- **GMX mailbox** — **IMAP ingress** (inbox polls `imap.gmx.net:993` for order-confirmation emails) and **SMTP egress** (invoicing/shop send invoice PDFs, password-reset and supplier-reorder mail). With no mail password the console email backend is used (safe in dev/CI); IMAP unreachable simply means the next poll finds nothing.
+- **mailbox.org mailbox** — **IMAP ingress** (inbox polls `imap.mailbox.org:993` for order-confirmation emails) and **SMTP egress** (invoicing/shop send invoice PDFs, password-reset and supplier-reorder mail). With no mail password the console email backend is used (safe in dev/CI); IMAP unreachable simply means the next poll finds nothing.
 - **Cloudflare R2** — product/media object storage via django-storages when all four `R2_*` vars are set; otherwise local `FileSystemStorage` (valid for dev/CI/tests).
 - **Wholesaler (Blackfire)** — catalogue/GPSR spreadsheets ingested by `catalog` management commands, and order-confirmation emails ingested by `inbox`. Operator/scheduled inputs; if absent, imports simply don't run.
 - **Cloudflare DNS / edge** — the certbot sidecar issues+renews the apex+wildcard TLS cert via the ACME DNS-01 challenge against the Cloudflare DNS API; the public edge sits behind Cloudflare WAF + Authenticated Origin Pulls.
@@ -375,7 +376,7 @@ inventory enriches items from the catalogue via `catalog.services` (in-process; 
 
 ### inbox (former MailBot)
 
-The **mail-ingress** app — MailBot's relay, reincarnated in-process. A scheduled poll (every 2 h; `manage.py poll_inbox`, run by the `cron`/supercronic container; also `inbox.tasks.poll_inbox_task` for ad-hoc async triggering) fetches new mail from the GMX mailbox over IMAP (`inbox.services.client`), deduplicates and records it, then routes it:
+The **mail-ingress** app — MailBot's relay, reincarnated in-process. A scheduled poll (every 2 h; `manage.py poll_inbox`, run by the `cron`/supercronic container; also `inbox.tasks.poll_inbox_task` for ad-hoc async triggering) fetches new mail from the mailbox.org mailbox over IMAP (`inbox.services.client`), deduplicates and records it, then routes it:
 
 - **`IngestedMessage`** — one row per fetched email; its unique `message_id` is the **idempotency key** (a re-polled email is never processed twice) and the row is the durable audit trail (`status`, `matched_handler`, `result`/`error`).
 - **`SenderRule`** — admin-editable "filter by sender": the first active rule (lowest `priority`) whose pattern matches the From address selects a registered **handler**. Operators add/disable senders without code changes.
@@ -441,7 +442,7 @@ The shared base every domain app builds on: cross-cutting models/utils, the `ser
 
 - **If the platform is unavailable.** Because it is one app, an outage takes down the storefront API and the admin together; the storefront degrades to the nginx **maintenance page** (the `/` and `/api/` 502/503/504 → `maintenance.html`). The datastores (`postgres`/`redis`) are the hard dependencies — a missing DB credential **fails boot loudly** (`${VAR:?}`) rather than starting a degraded guest.
 - **In-process seams remove cross-module partial failure.** The former DBU↔IM↔Shop↔Lexware↔MailBot network calls are now function calls in one transaction-scoped process, so there is no inter-service retry/backoff or partial-delivery to reason about for those paths. What remains: `inventory.services.receive_order` is **idempotent on `order_number`**; the shop→inventory sale push is in-process and any error is logged without breaking checkout; `inbox` dedups by `message_id`; invoicing job triggers are **non-idempotent** (poll the job before re-running).
-- **External dependency degradation (fail-soft).** PayPal outage → checkout `502/503`, cart preserved. Lexoffice/VATSense outage → the affected invoicing job fails or falls back (VAT default `19`); empty keys disable the feature. GMX IMAP unreachable → the next poll simply finds nothing; no mail password → console email backend. R2 unset → local filesystem storage.
+- **External dependency degradation (fail-soft).** PayPal outage → checkout `502/503`, cart preserved. Lexoffice/VATSense outage → the affected invoicing job fails or falls back (VAT default `19`); empty keys disable the feature. mailbox.org IMAP unreachable → the next poll simply finds nothing; no mail password → console email backend. R2 unset → local filesystem storage.
 - **Local mocking / standalone.** `docker compose up` (auto-loads `docker-compose.override.yml`) runs the full stack locally with `DEBUG`, source-mounted, plain-HTTP nginx (maintenance door only) — no Cloudflare/TLS/secrets needed. PayPal defaults to sandbox; Lexoffice/VATSense/R2/mail are all fail-soft when blank, so the platform boots and is exercisable with an otherwise empty `.env` (only the DB/Grafana credentials are required).
 
 ### Environment contract
@@ -472,10 +473,10 @@ One gitignored root `.env` (template `.env.example`). Datastore/Grafana credenti
 | `FRONTEND_BASE_URL` | url | — (password-reset links) | no |
 | `ORDER_IMPORT_EMAIL` | email | — (supplier reorder CSV recipient) | no |
 | `LEXOFFICE_API_KEY` / `VATSENSE_API_KEY` | string | — (empty disables) | **yes** |
-| `GMX_MAIL` / `GMX_PASSWORD` | string | — (empty → console email backend) | **yes** |
-| `DEFAULT_FROM_EMAIL` | email | `pjs-collectables@gmx.net` | no |
-| `IMAP_HOST` / `IMAP_PORT` / `IMAP_USE_SSL` / `IMAP_MAILBOX` | string/int/bool | `imap.gmx.net` / `993` / `True` / `INBOX` | no |
-| `IMAP_USER` / `IMAP_PASSWORD` | string | default to `GMX_MAIL`/`GMX_PASSWORD` | **yes** |
+| `MAIL_USER` / `MAIL_PASSWORD` | string | — (empty → console email backend) | **yes** |
+| `DEFAULT_FROM_EMAIL` | email | `support@pjscollectables.com` | no |
+| `IMAP_HOST` / `IMAP_PORT` / `IMAP_USE_SSL` / `IMAP_MAILBOX` | string/int/bool | `imap.mailbox.org` / `993` / `True` / `INBOX` | no |
+| `IMAP_USER` / `IMAP_PASSWORD` | string | default to `MAIL_USER`/`MAIL_PASSWORD` | **yes** |
 | `IS_FINAL` / `IS_NEW_TAX` / `IS_CREATING` | bool | invoicing job toggles (shop invoices and proformas ignore `IS_FINAL`: they are final exactly while the shop door is open) | no |
 | `R2_BUCKET` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_ENDPOINT_URL` | string | — (all four set → R2; else local FS) | **yes** |
 | `R2_CUSTOM_DOMAIN` / `R2_REGION` | string | — / `auto` | no |
@@ -489,7 +490,7 @@ One gitignored root `.env` (template `.env.example`). Datastore/Grafana credenti
 ### Observability
 
 - **Logs.** All containers use the Docker `json-file` driver (10 MB × 3); Promtail tails them into Loki. nginx writes a JSON-ish access log including the Cloudflare `CF-IPCountry` country code (`$http_cf_ipcountry`) — no GeoIP module needed. `core/trace.py` propagates correlation IDs so a request can be followed across modules.
-- **Metrics.** `GET /metrics` (django-prometheus) for the whole app — this consolidates the per-service `/metrics` the former DBUpdater/InventoryManager/invoicing each exposed. cAdvisor adds per-container CPU/mem/net; nginx is scraped on `pjs-monitoring`. Prometheus scrapes every 15–30 s; **Alertmanager** routes fired rules to a webhook (the always-firing Watchdog rule exercises the pipeline).
+- **Metrics.** `GET /metrics` (django-prometheus) for the web process — this consolidates the per-service `/metrics` the former DBUpdater/InventoryManager/invoicing each exposed — and the Celery worker serves its own on `worker:9808` over `pjs-scrape`. cAdvisor adds per-container CPU/mem/net; nginx is scraped on `pjs-monitoring`. Prometheus scrapes every 60 s (cAdvisor 30 s); **Alertmanager** mails fired rules (the always-firing Watchdog rule exercises the pipeline).
 - **Health endpoints.** `/health/` (liveness), `/status/` (aggregated readiness across web/promtail/grafana/prometheus); per-service Compose healthchecks for the datastores and observability containers.
 - **Dashboards.** Grafana (VPN-only at `grafana.pjscollectables.com`) unifies Prometheus metrics + Loki logs for a whole-platform view.
 
