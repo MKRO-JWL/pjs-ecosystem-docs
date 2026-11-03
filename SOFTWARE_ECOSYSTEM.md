@@ -382,7 +382,7 @@ The **mail-ingress** app — MailBot's relay, reincarnated in-process. A schedul
 - **`SenderRule`** — admin-editable "filter by sender": the first active rule (lowest `priority`) whose pattern matches the From address selects a registered **handler**. Operators add/disable senders without code changes.
 - **Handlers** — functions registered via `inbox.services.register_handler`. The built-in **`order_ingest`** parses a wholesaler order-confirmation email (BeautifulSoup over the line-item table, EN/DE column synonyms, order-number extraction) into `{order_number, items[]}` and forwards it **in-process** to `inventory.services.receive_order` — replacing MailBot's HTTP POST to InventoryManager. If the email carries no order number, a stable synthetic one is derived from the `message_id` so re-ingest stays idempotent.
 
-inbox **owns** the ingest dedup/audit state and the sender-routing rules; it is a producer with **no inbound API**. Data flows from the inbox **into** inventory. **Parser note:** `order_ingest`'s extraction is built to the documented MailBot payload shape and must be calibrated against a real wholesaler sample (synonym lists + order-number patterns); unit tests pin the contract with a synthetic fixture.
+inbox **owns** the ingest dedup/audit state and the sender-routing rules; it is a producer with **no inbound API**. Its search leaves out contact-form mail (subject marker `CONTACT_SUBJECT_MARKER`), which stays unread for the owner. Data flows from the inbox **into** inventory. **Parser note:** `order_ingest`'s extraction is built to the documented MailBot payload shape and must be calibrated against a real wholesaler sample (synonym lists + order-number patterns); unit tests pin the contract with a synthetic fixture.
 
 ### shop (former PJsShop)
 
@@ -393,6 +393,7 @@ The **storefront backend** and the only module that authenticates customers, per
 - **Shipping & order totals (`shop/services/pricing.py`)** — shipping is priced **server-side** from owner-managed zone/method/rate tables and stored on the order, so both checkout paths charge the same amount, a destination with no zone cannot be ordered at all, and the invoice reads what was charged instead of inferring it. *Plainly: the browser can no longer tell the shop what postage costs, and the shop can no longer guess.*
 - **Sale push (`shop/services/im_integration.py`)** — on capture, pushes sold lines to `inventory.services.record_sale(...)` **in-process** (the old best-effort HTTP POST to `im-web:8000/api/sales/` is gone). FIFO consumption + margin happen in the same process; a failure there is logged and never breaks checkout.
 - **Invoicing hook (`shop/services/lexware_integration.py`)** and **mail (`shop/services/mail.py`)** — invoice generation and transactional email (password reset, etc.) via the invoicing/mailer seams.
+- **Contact form (`shop/services/support.py`)** — `POST /api/contact/` stores each message as a ticket and mails it to the support mailbox with Reply-To set to the customer; the owner answers by mail or from the admin.
 
 **Non-goals:** shop is not the catalogue authority (catalog) and not the inventory ledger (it notifies inventory of sales but does not track on-hand stock). Product images/media are served from `pjs-media` (R2 in prod). Owner design decisions govern the order lifecycle, server-side pricing and shipping, checkout and the post-checkout claim, and account identity (one account per address, the username namespace, severed orders); each is recorded inline in `shop/`, at the code it governs.
 
@@ -472,6 +473,7 @@ One gitignored root `.env` (template `.env.example`). Datastore/Grafana credenti
 | `PAYPAL_CLIENT_ID` / `PAYPAL_SECRET` / `PAYPAL_WEBHOOK_ID` | string | — (sandbox falls back to test creds) | **yes** (live) |
 | `FRONTEND_BASE_URL` | url | — (password-reset links) | no |
 | `ORDER_IMPORT_EMAIL` | email | — (supplier reorder CSV recipient) | no |
+| `SUPPORT_EMAIL` | email | — (contact-form recipient, `support@pjscollectables.com`) | no |
 | `LEXOFFICE_API_KEY` / `VATSENSE_API_KEY` | string | — (empty disables) | **yes** |
 | `MAIL_USER` / `MAIL_PASSWORD` | string | — (empty → console email backend) | **yes** |
 | `DEFAULT_FROM_EMAIL` | email | `support@pjscollectables.com` | no |

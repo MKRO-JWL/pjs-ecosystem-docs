@@ -97,6 +97,7 @@
     {
       "category": "communication",
       "bases": [
+        "contract",
         "legal_obligation",
         "legitimate_interest"
       ],
@@ -109,6 +110,10 @@
         {
           "kind": "days",
           "days": 365
+        },
+        {
+          "kind": "tied_to",
+          "parent_category": true
         }
       ]
     },
@@ -146,6 +151,10 @@
         },
         {
           "kind": "account_lifetime"
+        },
+        {
+          "kind": "tied_to",
+          "parent_category": true
         }
       ]
     },
