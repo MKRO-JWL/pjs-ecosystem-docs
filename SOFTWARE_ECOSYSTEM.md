@@ -309,7 +309,7 @@ All app APIs are served by the single `web` container (`web:8000`, Docker DNS) a
 
 > **Removed 2026-07-10 — the mobile stock API (`/api/inventory/…`).** It was the platform's second external surface, reached through the hardened `im-api.pjscollectables.com/<PREFIX>/…` gateway with DRF token auth, and it served [IMApp](#imapp-context) alone. Both went when owned storage moved to third-party storage: the ten routes, the `im-api` vhost, the `IM_*` secrets and `rest_framework.authtoken` are all gone. **The `inventory` module now has no HTTP surface** — cross-app callers use `inventory.services` in-process. Do not re-add one for a 3PL integration without an owner decision.
 
-**2. B2B API (`/api/b2b/…`)** — designed for browser/SPA B2B customers (Session/Basic auth), but **not yet public**: the production edge 404s it until B2B launches (owner ruling, recorded in `b2b/views.py` and the nginx template).
+**2. B2B API (`/api/b2b/…`)** — designed for browser/SPA B2B customers (session auth), but **not yet public**: the production edge 404s it until B2B launches (owner ruling, recorded in `b2b/views.py` and the nginx template).
 
 | Method | Path | Purpose | Auth |
 | --- | --- | --- | --- |
@@ -319,7 +319,7 @@ All app APIs are served by the single `web` container (`web:8000`, Docker DNS) a
 
 **3. Admin & ops** — `GET /admin/` (unified Django admin; the former im/dbu/is/back admin sites collapse to one) plus the admin utility routes `/admin/sync-dbu/` and `/admin/analytics/`, and the inventory `/analysis/` dashboard — all **VPN-only**. `GET /health/` (liveness), `GET /status/` (aggregated service health, see [ops](#ops-former-infrastructurestack-is-web)), `GET /metrics` (django-prometheus, the web process). Internal app namespaces `/api/catalog/` and `/api/invoicing/` exist for admin/diagnostic use and return **404 on the public host**.
 
-**Service discovery / auth summary.** Internal Docker DNS `web:8000` on `pjs-net`; public hosts terminate TLS at nginx. Storefront = session+CSRF; B2B = session/basic + verified-business gate; admin/ops and the internal `catalog`/`invoicing` APIs = VPN network placement **plus** an owner-admin session gate at the app layer (single-superuser model). There is no global DRF authentication default — it is `[]`, so every view declares its own and a view that forgets fails closed.
+**Service discovery / auth summary.** Internal Docker DNS `web:8000` on `pjs-net`; public hosts terminate TLS at nginx. Storefront = session+CSRF; B2B = session + verified-business gate; admin/ops and the internal `catalog`/`invoicing` APIs = VPN network placement **plus** an owner-admin session gate at the app layer (single-superuser model). There is no global DRF authentication default — it is `[]`, so every view declares its own and a view that forgets fails closed.
 
 ### Consumes
 
@@ -382,7 +382,7 @@ The **mail-ingress** app — MailBot's relay, reincarnated in-process. A schedul
 - **`SenderRule`** — admin-editable "filter by sender": the first active rule (lowest `priority`) whose pattern matches the From address selects a registered **handler**. Operators add/disable senders without code changes.
 - **Handlers** — functions registered via `inbox.services.register_handler`. The built-in **`order_ingest`** parses a wholesaler order-confirmation email (BeautifulSoup over the line-item table, EN/DE column synonyms, order-number extraction) into `{order_number, items[]}` and forwards it **in-process** to `inventory.services.receive_order` — replacing MailBot's HTTP POST to InventoryManager. If the email carries no order number, a stable synthetic one is derived from the `message_id` so re-ingest stays idempotent.
 
-inbox **owns** the ingest dedup/audit state and the sender-routing rules; it is a producer with **no inbound API**. Its search leaves out contact-form mail (subject marker `CONTACT_SUBJECT_MARKER`), which stays unread for the owner. Data flows from the inbox **into** inventory. **Parser note:** `order_ingest`'s extraction is built to the documented MailBot payload shape and must be calibrated against a real wholesaler sample (synonym lists + order-number patterns); unit tests pin the contract with a synthetic fixture.
+inbox **owns** the ingest dedup/audit state and the sender-routing rules; it is a producer with **no inbound API**. Its search leaves out contact-form mail (recognised by the `CONTACT_THREAD_PREFIX` in its Message-ID and in replies' In-Reply-To/References), which stays unread for the owner. Data flows from the inbox **into** inventory. **Parser note:** `order_ingest`'s extraction is built to the documented MailBot payload shape and must be calibrated against a real wholesaler sample (synonym lists + order-number patterns); unit tests pin the contract with a synthetic fixture.
 
 ### shop (former PJsShop)
 
@@ -412,7 +412,7 @@ invoicing **consumes** upstream CSV exports and the Lexoffice/VATSense APIs; its
 
 ### b2b
 
-A new, gated **business storefront** under its own `/api/b2b/` namespace, kept separate from the public shop and edge-hidden until B2B launches. A logged-in customer applies via `POST /api/b2b/register/`, which creates a `BusinessProfile` in a **PENDING** state for admin approval; `GET /api/b2b/profile/` returns their profile + verification status; `GET /api/b2b/catalogue/` is gated by the `IsVerifiedBusiness` permission and returns a B2B catalogue read **in-process** via `catalog.services.query_products` (the hook point for B2B-specific pricing/visibility later). It uses session/basic auth (not the platform-default token auth). It **owns** `BusinessProfile` (the business-account + verification state) and depends only on the catalogue seam.
+A new, gated **business storefront** under its own `/api/b2b/` namespace, kept separate from the public shop and edge-hidden until B2B launches. A logged-in customer applies via `POST /api/b2b/register/`, which creates a `BusinessProfile` in a **PENDING** state for admin approval; `GET /api/b2b/profile/` returns their profile + verification status; `GET /api/b2b/catalogue/` is gated by the `IsVerifiedBusiness` permission and returns a B2B catalogue read **in-process** via `catalog.services.query_products` (the hook point for B2B-specific pricing/visibility later). It uses session auth (not the platform-default token auth). It **owns** `BusinessProfile` (the business-account + verification state) and depends only on the catalogue seam.
 
 ### ops (former InfrastructureStack is-web)
 
